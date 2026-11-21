@@ -739,6 +739,52 @@ class MainActivity : Activity(), SensorEventListener {
    updateMeasurementUi()
   }
  }
+ /**
+  * Experimental ECG beat timing extractor, not a diagnostic R-peak detector.
+  * Removes a moving baseline and uses a robust amplitude threshold plus
+  * a 280 ms refractory period. Timestamps are derived from sample positions
+  * to avoid relying on undocumented vendor timestamp units.
+  */
+ private fun detectEcgBeats(samples: List<Triple<Long, Float, Int>>, durationMs: Long): List<Int> {
+  if (samples.size < 100 || durationMs < 1000L) return emptyList()
+  val valid = samples.map { if (it.third == 0 && it.second.isFinite()) it.second.toDouble() else Double.NaN }
+  val window = (samples.size.toDouble() * 0.18 / (durationMs / 1000.0)).toInt().coerceIn(3, 300)
+  val prefix = DoubleArray(valid.size + 1)
+  val counts = IntArray(valid.size + 1)
+  valid.forEachIndexed { i, v ->
+   prefix[i + 1] = prefix[i] + if (v.isFinite()) v else 0.0
+   counts[i + 1] = counts[i] + if (v.isFinite()) 1 else 0
+  }
+  val deviations = DoubleArray(valid.size) { i ->
+   if (!valid[i].isFinite()) 0.0 else {
+    val lo = (i - window / 2).coerceAtLeast(0)
+    val hi = (i + window / 2 + 1).coerceAtMost(valid.size)
+    val count = counts[hi] - counts[lo]
+    if (count == 0) 0.0 else kotlin.math.abs(valid[i] - (prefix[hi] - prefix[lo]) / count)
+   }
+  }
+  val sorted = deviations.filter { it > 0.0 && it.isFinite() }.sorted()
+  if (sorted.size < 50) return emptyList()
+  val median = sorted[sorted.size / 2]
+  val high = sorted[(sorted.size * 9 / 10).coerceAtMost(sorted.lastIndex)]
+  val threshold = kotlin.math.max(median * 3.0, high * 0.5)
+  val refractory = (samples.size.toDouble() * 0.28 / (durationMs / 1000.0)).toInt().coerceAtLeast(1)
+  val beats = mutableListOf<Int>()
+  var candidate = -1
+  for (i in 1 until deviations.lastIndex) {
+   if (deviations[i] < threshold || deviations[i] < deviations[i - 1] || deviations[i] < deviations[i + 1]) continue
+   if (candidate < 0) {
+    candidate = i
+   } else if (i - candidate < refractory) {
+    if (deviations[i] > deviations[candidate]) candidate = i
+   } else {
+    beats.add((candidate.toDouble() * durationMs / samples.size).toInt())
+    candidate = i
+   }
+  }
+  if (candidate >= 0) beats.add((candidate.toDouble() * durationMs / samples.size).toInt())
+  return beats
+ }
  private fun finishEcgRecording() {
   if (!ecgRecording) { stopSamsungTrackerTest(); return }
   ecgRecording = false
@@ -765,21 +811,17 @@ class MainActivity : Activity(), SensorEventListener {
     event.remove("file")
     mqtt?.publish("ecg", event.toString())
     bleServer?.publishJournal(event.toString())
-    // Keep individual ECG chunks below typical MQTT packet limits.
-    copy.chunked(200).forEachIndexed { index, chunk ->
-     val samples = JSONArray()
-     chunk.forEach { (timestamp, mv, lead) ->
-      samples.put(JSONArray().put(timestamp).put(mv.toDouble()).put(lead))
-     }
-     val part = JSONObject().put("kind", "ecg_chunk")
-      .put("id", "ecg:$recordedAt:$index")
-      .put("session_id", "ecg:$recordedAt")
-      .put("measured_at", java.time.Instant.ofEpochMilli(recordedAt).toString())
-      .put("chunk_index", index)
-      .put("chunk_count", (copy.size + 199) / 200)
-      .put("samples", samples)
-     mqtt?.publish("ecg_chunk", part.toString())
-    }
+    // Transmit only experimental R-peak timing markers, never raw ECG waveform.
+    // The complete signal remains available in the local CSV export.
+    val beats = detectEcgBeats(copy, durationMs)
+    val beatEvent = JSONObject().put("kind", "ecg_beats")
+     .put("id", "ecg:$recordedAt:beats")
+     .put("session_id", "ecg:$recordedAt")
+     .put("measured_at", java.time.Instant.ofEpochMilli(recordedAt).toString())
+     .put("algorithm", "adaptive_peak_v1_experimental")
+     .put("beat_offsets_ms", JSONArray(beats))
+     .put("beat_count", beats.size)
+    mqtt?.publish("ecg_beats", beatEvent.toString())
     measurementMessage = "Запись ЭКГ сохранена"
     measurementPreview = "${durationMs / 1000} с · ${copy.size} отсчётов" +
      if (ecgContactLost) " · Были нарушения контакта" else ""
@@ -914,7 +956,14 @@ class MainActivity : Activity(), SensorEventListener {
   entry.put("timestamp", System.currentTimeMillis())
   for (key in listOf("fatRatio", "fatMass", "bodyWater", "muscleRatio", "muscleMass",
                      "bmr", "fatFreeRatio", "fatFreeMass", "impedanceMagnitude", "impedanceDegree")) {
-   biaField(message, key)?.let { entry.put(key, it.toDouble()) }
+   biaField(message, key)?.let { raw ->
+    val decimals = when (key) { "bmr" -> 0; "impedanceDegree" -> 2; else -> 1 }
+    val factor = when (decimals) { 0 -> 1.0; 2 -> 100.0; else -> 10.0 }
+    val rounded = kotlin.math.round(raw.toDouble() * factor) / factor
+    if (rounded.isFinite()) {
+     if (decimals == 0) entry.put(key, rounded.toLong()) else entry.put(key, rounded)
+    }
+   }
   }
   val history = try { JSONArray(prefs.getString("bia_history", "[]")) } catch (_: Exception) { JSONArray() }
   val updated = JSONArray()
