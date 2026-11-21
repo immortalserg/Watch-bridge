@@ -276,6 +276,19 @@ class MainActivity : Activity(), SensorEventListener {
    bleServer?.publishJournal(event.toString())
   }
  }
+ private fun publishCurrentSteps() {
+  val day = LocalDate.now().toString()
+  val entry = stepHistory().optJSONObject(day)
+  if (entry == null) {
+   mqttInfo = "Шаги: нет локальных данных"
+   return
+  }
+  val event = JSONObject().put("kind", "steps").put("id", "steps:$day")
+   .put("measured_at", java.time.Instant.now().toString()).put("date", day)
+   .put("steps", entry.optLong("steps", 0L)).put("diatance", 0).put("kcal", 0)
+  mqtt?.publish("steps", event.toString())
+  bleServer?.publishJournal(event.toString())
+ }
  private fun showJournal(kind: String) {
   stopHeartBlink()
   stopOxygenBlink()
@@ -293,6 +306,7 @@ class MainActivity : Activity(), SensorEventListener {
     root.addView(label("$date   ${entry.optInt("value")} " + (if (kind == "heart") "уд/мин" else "%"), 12f))
    }
   } else if (kind == "steps") {
+   root.addView(button("Отправить шаги по MQTT") { publishCurrentSteps(); showJournal("steps") })
    root.addView(label("Шаги, зарегистрированные приложением по дням", 11f))
    val history = stepHistory()
    val days = history.keys().asSequence().toList().sortedDescending()
