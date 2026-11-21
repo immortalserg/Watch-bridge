@@ -28,7 +28,7 @@ class WatchMqtt(private val context: Context, private val report: (String) -> Un
    var stage = "создание подключения"
    try {
     val uri = (if (tls) "ssl://" else "tcp://") + host + ":" + port
-    val username = prefs.getString("mqtt_user", "").orEmpty()
+    val username = prefs.getString("mqtt_user", "").orEmpty().trim()
     val password = prefs.getString("mqtt_password", "").orEmpty()
     val fingerprint = "$username:${password.hashCode()}:$tls"
     Log.i("WatchBridgeMQTT", "Connecting host=$host port=$port tls=$tls userLength=${username.length} user=$username passwordLength=${password.length}")
