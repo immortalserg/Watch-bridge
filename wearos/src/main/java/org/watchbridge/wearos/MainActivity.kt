@@ -745,6 +745,27 @@ class MainActivity : Activity(), SensorEventListener {
     val updated = JSONArray().put(item)
     for (i in 0 until minOf(19, history.length())) updated.put(history.get(i))
     prefs.edit().putString("ecg_history", updated.toString()).apply()
+    val recordedAt = item.optLong("timestamp")
+    val event = JSONObject(item.toString()).put("kind", "ecg").put("id", "ecg:$recordedAt")
+     .put("measured_at", java.time.Instant.ofEpochMilli(recordedAt).toString())
+     .remove("file")
+    mqtt?.publish("ecg", event.toString())
+    bleServer?.publishJournal(event.toString())
+    // Keep individual ECG chunks below typical MQTT packet limits.
+    copy.chunked(200).forEachIndexed { index, chunk ->
+     val samples = JSONArray()
+     chunk.forEach { (timestamp, mv, lead) ->
+      samples.put(JSONArray().put(timestamp).put(mv.toDouble()).put(lead))
+     }
+     val part = JSONObject().put("kind", "ecg_chunk")
+      .put("id", "ecg:$recordedAt:$index")
+      .put("session_id", "ecg:$recordedAt")
+      .put("measured_at", java.time.Instant.ofEpochMilli(recordedAt).toString())
+      .put("chunk_index", index)
+      .put("chunk_count", (copy.size + 199) / 200)
+      .put("samples", samples)
+     mqtt?.publish("ecg_chunk", part.toString())
+    }
     measurementMessage = "Запись ЭКГ сохранена"
     measurementPreview = "${durationMs / 1000} с · ${copy.size} отсчётов" +
      if (ecgContactLost) " · Были нарушения контакта" else ""
@@ -886,6 +907,13 @@ class MainActivity : Activity(), SensorEventListener {
   updated.put(entry)
   for (i in 0 until minOf(history.length(), 49)) updated.put(history.get(i))
   prefs.edit().putString("bia_history", updated.toString()).apply()
+  if (entry.length() > 1) {
+   val timestamp = entry.optLong("timestamp")
+   val event = JSONObject(entry.toString()).put("kind", "bia").put("id", "bia:$timestamp")
+    .put("measured_at", java.time.Instant.ofEpochMilli(timestamp).toString())
+   mqtt?.publish("bia", event.toString())
+   bleServer?.publishJournal(event.toString())
+  }
  }
  private fun showBiaHistory() {
   screen = "bia_history"
