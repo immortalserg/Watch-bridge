@@ -951,21 +951,45 @@ class MainActivity : Activity(), SensorEventListener {
    "$title: ${formatBia(biaField(message, key), unit)}"
   }
  }
+ private fun roundedBiaValue(key: String, value: Double): Number? {
+  if (!value.isFinite()) return null
+  val decimals = when (key) { "bmr" -> 0; "impedanceDegree" -> 2; else -> 1 }
+  val factor = when (decimals) { 0 -> 1.0; 2 -> 100.0; else -> 10.0 }
+  val rounded = kotlin.math.round(value * factor) / factor
+  return if (decimals == 0) rounded.toLong() else rounded
+ }
+ private fun normalizedBiaHistory(): JSONArray {
+  val original = try { JSONArray(prefs.getString("bia_history", "[]")) } catch (_: Exception) { JSONArray() }
+  val normalized = JSONArray()
+  val fields = listOf("fatRatio", "fatMass", "bodyWater", "muscleRatio", "muscleMass",
+   "bmr", "fatFreeRatio", "fatFreeMass", "impedanceMagnitude", "impedanceDegree")
+  for (i in 0 until original.length()) {
+   val entry = original.optJSONObject(i) ?: continue
+   val copy = JSONObject(entry.toString())
+   for (key in fields) {
+    if (copy.has(key) && !copy.isNull(key)) {
+     val raw = copy.optDouble(key, Double.NaN)
+     val rounded = roundedBiaValue(key, raw)
+     if (rounded != null) copy.put(key, rounded)
+    }
+   }
+   normalized.put(copy)
+  }
+  if (normalized.toString() != original.toString()) {
+   prefs.edit().putString("bia_history", normalized.toString()).apply()
+  }
+  return normalized
+ }
  private fun saveBiaResult(message: String) {
   val entry = JSONObject()
   entry.put("timestamp", System.currentTimeMillis())
   for (key in listOf("fatRatio", "fatMass", "bodyWater", "muscleRatio", "muscleMass",
                      "bmr", "fatFreeRatio", "fatFreeMass", "impedanceMagnitude", "impedanceDegree")) {
    biaField(message, key)?.let { raw ->
-    val decimals = when (key) { "bmr" -> 0; "impedanceDegree" -> 2; else -> 1 }
-    val factor = when (decimals) { 0 -> 1.0; 2 -> 100.0; else -> 10.0 }
-    val rounded = kotlin.math.round(raw.toDouble() * factor) / factor
-    if (rounded.isFinite()) {
-     if (decimals == 0) entry.put(key, rounded.toLong()) else entry.put(key, rounded)
-    }
+    roundedBiaValue(key, raw.toDouble())?.let { entry.put(key, it) }
    }
   }
-  val history = try { JSONArray(prefs.getString("bia_history", "[]")) } catch (_: Exception) { JSONArray() }
+  val history = normalizedBiaHistory()
   val updated = JSONArray()
   updated.put(entry)
   for (i in 0 until minOf(history.length(), 49)) updated.put(history.get(i))
@@ -986,7 +1010,7 @@ class MainActivity : Activity(), SensorEventListener {
    setPadding(dp(2), 0, dp(2), dp(2))
   })
   root.addView(button("← Назад") { showMeasurement("BIA") })
-  val history = try { JSONArray(prefs.getString("bia_history", "[]")) } catch (_: Exception) { JSONArray() }
+  val history = normalizedBiaHistory()
   if (history.length() == 0) root.addView(label("Завершённых измерений пока нет", 12f))
   for (i in 0 until history.length()) {
    val entry = history.optJSONObject(i) ?: continue
