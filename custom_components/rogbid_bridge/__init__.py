@@ -25,6 +25,10 @@ def sensor_values(kind, record):
         values = {"spo2": record.get("spo2")}
     elif kind == "steps":
         values = {key: record.get(key) for key in ("steps", "kcal", "diatance")}
+    elif kind == "bia":
+        values = {key: record.get(key) for key in ("fatRatio", "fatMass", "bodyWater", "muscleRatio", "muscleMass", "bmr", "fatFreeRatio", "fatFreeMass", "impedanceMagnitude", "impedanceDegree")}
+    elif kind == "ecg":
+        values = {"ecg_duration_ms": record.get("durationMs"), "ecg_samples": record.get("samples")}
     elif kind == "sleep":
         values = {
             "sleep_duration": record.get("duration_minutes", record.get("sleep_duration")),
@@ -62,7 +66,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await hass.async_add_executor_job(journal.initialize)
     state = {}
     # Restore last saved values before registering entities.
-    for history_kind in ("heart", "oxygen", "steps", "sleep"):
+    for history_kind in ("heart", "oxygen", "steps", "sleep", "bia", "ecg"):
         latest = await hass.async_add_executor_job(journal.recent, device_id, history_kind, 1)
         if latest:
             state.update(sensor_values(history_kind, latest[0]))
@@ -132,7 +136,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 return
             record_id = str(payload["id"])
             measured_at = payload["measured_at"]
-            if kind not in ("heart", "oxygen", "steps", "sleep") or not isinstance(measured_at, str):
+            if kind not in ("heart", "oxygen", "steps", "sleep", "bia", "ecg", "ecg_chunk", "ecg_beats") or not isinstance(measured_at, str):
                 return
             if len(record_id) > 200 or len(measured_at) > 64:
                 return
