@@ -6,7 +6,7 @@ from homeassistant.core import HomeAssistant
 
 from .const import CONF_DEVICE_ID, DOMAIN
 
-KINDS = ("heart", "oxygen", "steps", "sleep", "bia", "ecg", "ecg_chunk")
+KINDS = ("heart", "oxygen", "steps", "sleep", "bia", "ecg", "ecg_chunk", "ecg_beats")
 
 
 @websocket_api.websocket_command(
