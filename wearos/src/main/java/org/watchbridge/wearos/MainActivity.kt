@@ -748,7 +748,7 @@ class MainActivity : Activity(), SensorEventListener {
     val recordedAt = item.optLong("timestamp")
     val event = JSONObject(item.toString()).put("kind", "ecg").put("id", "ecg:$recordedAt")
      .put("measured_at", java.time.Instant.ofEpochMilli(recordedAt).toString())
-     .remove("file")
+    event.remove("file")
     mqtt?.publish("ecg", event.toString())
     bleServer?.publishJournal(event.toString())
     // Keep individual ECG chunks below typical MQTT packet limits.
