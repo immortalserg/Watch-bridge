@@ -12,8 +12,11 @@ class WatchMqtt(private val context: Context, private val report: (String) -> Un
  private val queue = Executors.newSingleThreadExecutor()
  private var client: MqttClient? = null
  private var currentUri = ""
+ private var currentCredentials = ""
  private val prefs get() = context.getSharedPreferences("watch_bridge", Context.MODE_PRIVATE)
  private val deviceId get() = prefs.getString("device_id", "wearos_unknown") ?: "wearos_unknown"
+
+ fun testConnection() { publish("diagnostic", "{\"kind\":\"diagnostic\",\"id\":\"mqtt-test\",\"measured_at\":\"1970-01-01T00:00:00Z\"}") }
 
  fun publish(kind: String, payload: String) {
   if (!prefs.getBoolean("mqtt_enabled", false)) return
@@ -25,7 +28,11 @@ class WatchMqtt(private val context: Context, private val report: (String) -> Un
    var stage = "создание подключения"
    try {
     val uri = (if (tls) "ssl://" else "tcp://") + host + ":" + port
-    if (uri != currentUri || client?.isConnected != true) {
+    val username = prefs.getString("mqtt_user", "").orEmpty()
+    val password = prefs.getString("mqtt_password", "").orEmpty()
+    val fingerprint = "$username:${password.hashCode()}:$tls"
+    Log.i("WatchBridgeMQTT", "Connecting host=$host port=$port tls=$tls userLength=${username.length} user=$username passwordLength=${password.length}")
+    if (uri != currentUri || fingerprint != currentCredentials || client?.isConnected != true) {
      try { client?.disconnect() } catch (_: Exception) {}
      try { client?.close() } catch (_: Exception) {}
      val next = MqttClient(uri, "watchbridge_" + deviceId.takeLast(18), MemoryPersistence())
@@ -33,20 +40,20 @@ class WatchMqtt(private val context: Context, private val report: (String) -> Un
       isCleanSession = true
       connectionTimeout = 10
       keepAliveInterval = 30
-      userName = prefs.getString("mqtt_user", "").orEmpty().takeIf { it.isNotEmpty() }
-      val password = prefs.getString("mqtt_password", "").orEmpty()
+      userName = username.takeIf { it.isNotEmpty() }
       if (password.isNotEmpty()) this.password = password.toCharArray()
      }
      stage = "соединение с брокером"
      next.connect(opts)
      client = next
      currentUri = uri
+     currentCredentials = fingerprint
      report("MQTT: подключено")
     }
     val base = "rogbid/$deviceId"
     stage = "публикация $kind"
     client?.publish("$base/history/$kind", payload.toByteArray(Charsets.UTF_8), 1, false)
-    report("MQTT: отправлено $kind")
+    report(if (kind == "diagnostic") "MQTT: тест успешен" else "MQTT: отправлено $kind")
    } catch (e: Exception) {
     Log.w("WatchBridgeMQTT", "Publish failed", e)
     val cause = generateSequence(e as Throwable?) { it.cause }.last()
