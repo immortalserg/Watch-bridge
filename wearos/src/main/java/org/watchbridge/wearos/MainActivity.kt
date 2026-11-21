@@ -422,6 +422,11 @@ class MainActivity : Activity(), SensorEventListener {
    }
    showAppSettings()
   })
+  root.addView(button("Проверить MQTT") {
+   mqttInfo = "MQTT: проверка…"
+   mqtt?.testConnection()
+   showAppSettings()
+  })
   root.addView(button("Назад") { showAppSettings() })
   showPage(root)
  }
