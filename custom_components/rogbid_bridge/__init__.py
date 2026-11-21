@@ -136,7 +136,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 return
             record_id = str(payload["id"])
             measured_at = payload["measured_at"]
-            if kind not in ("heart", "oxygen", "steps", "sleep", "bia", "ecg", "ecg_chunk") or not isinstance(measured_at, str):
+            if kind not in ("heart", "oxygen", "steps", "sleep", "bia", "ecg", "ecg_chunk", "ecg_beats") or not isinstance(measured_at, str):
                 return
             if len(record_id) > 200 or len(measured_at) > 64:
                 return
