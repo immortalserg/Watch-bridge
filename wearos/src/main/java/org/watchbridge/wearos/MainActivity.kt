@@ -325,7 +325,8 @@ class MainActivity : Activity(), SensorEventListener {
   root.addView(label("Настройки", 17f))
   root.addView(button("Настройки приложения") { showAppSettings() })
   root.addView(button("Параметры тела") { showBodySettings() })
-  root.addView(button("Диагностика датчиков") { showDiagnostics() })
+  root.addView(button("MQTT / Home Assistant") { showMqttSettings() })
+  root.addView(button("Bluetooth") { showBluetoothSettings() })
   root.addView(button("Назад") { showHome() })
   showPage(root)
  }
@@ -373,15 +374,14 @@ class MainActivity : Activity(), SensorEventListener {
   root.addView(selector, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(48)).apply {
    setMargins(dp(5), dp(4), dp(5), dp(8))
   })
-  root.addView(button("MQTT и Bluetooth") { showTransportSettings() })
-  root.addView(label(mqttInfo, 11f))
   root.addView(button("Назад") { showSettings() })
   showPage(root)
  }
- private fun showTransportSettings() {
-  screen = "transport_settings"
+ private fun showMqttSettings() {
+  screen = "mqtt_settings"
   val root = page()
-  root.addView(label("Передача данных", 15f))
+  root.addView(label("MQTT / Home Assistant", 15f))
+  root.addView(label("Отправка измерений в Home Assistant через MQTT", 11f))
   fun field(title: String, key: String, fallback: String = "", password: Boolean = false): EditText {
    root.addView(label(title, 11f))
    val input = EditText(this).apply {
@@ -394,54 +394,79 @@ class MainActivity : Activity(), SensorEventListener {
    root.addView(input)
    return input
   }
+  var enabled = prefs.getBoolean("mqtt_enabled", false)
+  lateinit var enabledToggle: Button
+  enabledToggle = button("Отправлять в Home Assistant: " + if (enabled) "Да" else "Нет") {
+   enabled = !enabled
+   enabledToggle.text = "Отправлять в Home Assistant: " + if (enabled) "Да" else "Нет"
+  }
+  root.addView(enabledToggle)
   val host = field("MQTT сервер (IP или DNS)", "mqtt_host")
   val port = field("Порт (TLS: 8883, обычный: 1883)", "mqtt_port", "8883")
   val user = field("Логин", "mqtt_user")
   val pass = field("Пароль", "mqtt_password", password = true)
-  var enabled = prefs.getBoolean("mqtt_enabled", false)
   var tls = prefs.getBoolean("mqtt_tls", true)
-  var ble = prefs.getBoolean("ble_enabled", false)
-  lateinit var mqttToggle: Button
-  mqttToggle = button("MQTT: " + if (enabled) "Вкл" else "Выкл") {
-   enabled = !enabled
-   mqttToggle.text = "MQTT: " + if (enabled) "Вкл" else "Выкл"
-  }
-  root.addView(mqttToggle)
   lateinit var tlsToggle: Button
   tlsToggle = button("TLS: " + if (tls) "Вкл" else "Выкл") {
    tls = !tls
    tlsToggle.text = "TLS: " + if (tls) "Вкл" else "Выкл"
   }
   root.addView(tlsToggle)
-  lateinit var bleToggle: Button
-  bleToggle = button("Bluetooth: " + if (ble) "Вкл" else "Выкл") {
-   ble = !ble
-   bleToggle.text = "Bluetooth: " + if (ble) "Вкл" else "Выкл"
-  }
-  root.addView(bleToggle)
-  root.addView(button("Сохранить") {
+  val notice = label(mqttInfo, 11f)
+  root.addView(notice)
+  fun save(): Boolean {
    val p = port.text.toString().toIntOrNull()
    if (p == null || p !in 1..65535) {
     mqttInfo = "Неверный MQTT порт"
-   } else {
-    prefs.edit().putString("mqtt_host", host.text.toString().trim())
-     .putString("mqtt_port", p.toString())
-     .putString("mqtt_user", user.text.toString().trim())
-     .putString("mqtt_password", pass.text.toString())
-     .putBoolean("mqtt_enabled", enabled)
-     .putBoolean("mqtt_tls", tls)
-     .putBoolean("ble_enabled", ble).apply()
-    if (ble) startBle() else { bleServer?.stop(); bleServer = null }
-    mqttInfo = "Настройки сохранены"
+    notice.text = mqttInfo
+    return false
    }
-   showAppSettings()
-  })
+   prefs.edit().putString("mqtt_host", host.text.toString().trim())
+    .putString("mqtt_port", p.toString())
+    .putString("mqtt_user", user.text.toString().trim())
+    .putString("mqtt_password", pass.text.toString())
+    .putBoolean("mqtt_enabled", enabled)
+    .putBoolean("mqtt_tls", tls).apply()
+   mqttInfo = "Настройки сохранены"
+   notice.text = mqttInfo
+   return true
+  }
+  root.addView(button("Сохранить") { save() })
   root.addView(button("Проверить MQTT") {
-   mqttInfo = "MQTT: проверка…"
-   mqtt?.testConnection()
-   showAppSettings()
+   if (save()) {
+    if (enabled) {
+     mqttInfo = "MQTT: проверка…"
+     notice.text = mqttInfo
+     mqtt?.testConnection()
+    } else {
+     mqttInfo = "Включи отправку в Home Assistant для проверки"
+     notice.text = mqttInfo
+    }
+   }
   })
-  root.addView(button("Назад") { showAppSettings() })
+  root.addView(button("Назад") { showSettings() })
+  showPage(root)
+ }
+ private fun showBluetoothSettings() {
+  screen = "bluetooth_settings"
+  val root = page()
+  root.addView(label("Bluetooth", 16f))
+  root.addView(label("Передача данных по Bluetooth независимо от MQTT", 11f))
+  var enabled = prefs.getBoolean("ble_enabled", false)
+  lateinit var toggle: Button
+  toggle = button("Передавать по Bluetooth: " + if (enabled) "Да" else "Нет") {
+   enabled = !enabled
+   toggle.text = "Передавать по Bluetooth: " + if (enabled) "Да" else "Нет"
+  }
+  root.addView(toggle)
+  root.addView(label("Состояние Bluetooth", 12f))
+  root.addView(label(bleInfo, 11f))
+  root.addView(button("Сохранить") {
+   prefs.edit().putBoolean("ble_enabled", enabled).apply()
+   if (enabled) startBle() else { bleServer?.stop(); bleServer = null }
+   showBluetoothSettings()
+  })
+  root.addView(button("Назад") { showSettings() })
   showPage(root)
  }
  private fun showBodySettings() {
@@ -550,7 +575,6 @@ class MainActivity : Activity(), SensorEventListener {
   root.addView(button("ЭКГ") { showMeasurement("ECG") })
   root.addView(button("Состав тела · BIA") { showMeasurement("BIA") })
   root.addView(button("История состава тела") { showBiaHistory() })
-  root.addView(button("Системная диагностика") { showSystemDiagnostics() })
   root.addView(button("Назад") { showSettings() })
   showPage(root)
  }
