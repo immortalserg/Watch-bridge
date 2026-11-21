@@ -412,7 +412,7 @@ class MainActivity : Activity(), SensorEventListener {
    } else {
     prefs.edit().putString("mqtt_host", host.text.toString().trim())
      .putString("mqtt_port", p.toString())
-     .putString("mqtt_user", user.text.toString())
+     .putString("mqtt_user", user.text.toString().trim())
      .putString("mqtt_password", pass.text.toString())
      .putBoolean("mqtt_enabled", enabled)
      .putBoolean("mqtt_tls", tls)
