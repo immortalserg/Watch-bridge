@@ -10,7 +10,7 @@ android {
   minSdk = 30
   targetSdk = 35
   versionCode = (System.getenv("WATCH_BRIDGE_VERSION_CODE")?.toIntOrNull() ?: 3)
-  versionName = "0.3.0-rc1"
+  versionName = "0.3.0"
  }
  val keyPath = System.getenv("WATCH_BRIDGE_KEYSTORE_PATH")
  val keyPassword = System.getenv("WATCH_BRIDGE_KEYSTORE_PASSWORD")
