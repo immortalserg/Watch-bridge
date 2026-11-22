@@ -97,11 +97,19 @@ class MainActivity : Activity(), SensorEventListener {
   setBackgroundColor(skin().bg)
  }
  private fun showPage(root: LinearLayout) {
+  if (screen != "home") {
+   // Exact 3 physical pixels between adjacent menu items (buttons, text and fields).
+   root.dividerDrawable = GradientDrawable().apply {
+    setColor(Color.TRANSPARENT)
+    setSize(1, 3)
+   }
+   root.showDividers = LinearLayout.SHOW_DIVIDER_MIDDLE
+  }
   setContentView(ScrollView(this).apply { setBackgroundColor(skin().bg); addView(root) })
  }
  private fun label(value: String, size: Float = 15f): TextView = TextView(this).apply {
   text = value; textSize = size; setTextColor(skin().fg)
-  gravity = Gravity.CENTER; setPadding(dp(3), dp(6), dp(3), dp(6))
+  gravity = Gravity.CENTER; setPadding(dp(3), if (screen == "home") dp(6) else 0, dp(3), if (screen == "home") dp(6) else 0)
  }
  private fun button(title: String, action: () -> Unit): Button = Button(this).apply {
   text = title; isAllCaps = false; textSize = 11f; setTextColor(skin().fg)
@@ -327,12 +335,12 @@ class MainActivity : Activity(), SensorEventListener {
   val root = page().apply { setPadding(dp(10), dp(2), dp(10), dp(10)) }
   root.addView(label("Настройки", 13f).apply {
    typeface = Typeface.DEFAULT_BOLD
-   setPadding(dp(2), 0, dp(2), dp(2))
+   setPadding(dp(2), 0, dp(2), 0)
   })
   fun settingsButton(title: String, action: () -> Unit) {
    root.addView(button(title, action), LinearLayout.LayoutParams(
     LinearLayout.LayoutParams.MATCH_PARENT, dp(menuButtonHeightDp())
-   ).apply { setMargins(dp(1), dp(1), dp(1), dp(1)) })
+   ).apply { setMargins(dp(1), 0, dp(1), 0) })
   }
   settingsButton("Настройки приложения") { showAppSettings() }
   settingsButton("Параметры тела") { showBodySettings() }
@@ -347,7 +355,7 @@ class MainActivity : Activity(), SensorEventListener {
   val root = page().apply { setPadding(dp(10), dp(2), dp(10), dp(10)) }
   root.addView(label("О приложении", 13f).apply {
    typeface = Typeface.DEFAULT_BOLD
-   setPadding(dp(2), 0, dp(2), dp(2))
+   setPadding(dp(2), 0, dp(2), 0)
   })
   val version = try {
    val info = packageManager.getPackageInfo(packageName, 0)
@@ -360,7 +368,7 @@ class MainActivity : Activity(), SensorEventListener {
   root.addView(label("Разработчик: Kusheev Sergei", 11f))
   root.addView(button("Назад") { showSettings() }, LinearLayout.LayoutParams(
    LinearLayout.LayoutParams.MATCH_PARENT, dp(menuButtonHeightDp())
-  ).apply { setMargins(dp(1), dp(1), dp(1), dp(1)) })
+  ).apply { setMargins(dp(1), 0, dp(1), 0) })
   showPage(root)
  }
  private fun showAppSettings() {
@@ -368,10 +376,10 @@ class MainActivity : Activity(), SensorEventListener {
   val root = page().apply { setPadding(dp(10), dp(2), dp(10), dp(10)) }
   root.addView(label("Настройки приложения", 13f).apply {
    typeface = Typeface.DEFAULT_BOLD
-   setPadding(dp(2), 0, dp(2), 3)
+   setPadding(dp(2), 0, dp(2), 0)
   })
   root.addView(label("Тема оформления", 11f).apply {
-   setPadding(dp(2), 0, dp(2), 3)
+   setPadding(dp(2), 0, dp(2), 0)
   })
   val themeKeys = listOf("dark", "light", "forest", "sunset", "pink", "lavender", "mint", "cream", "sky")
   val themeNames = themeKeys.map { themeTitle(it) }
@@ -410,7 +418,7 @@ class MainActivity : Activity(), SensorEventListener {
    }
   }
   root.addView(selector, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(38)).apply {
-   setMargins(dp(1), 0, dp(1), 3)
+   setMargins(dp(1), 0, dp(1), 0)
   })
   fun heightControl(title: String, key: String, defaultHeight: Int) {
    val current = prefs.getInt(key, defaultHeight).coerceIn(30, 80)
@@ -432,7 +440,7 @@ class MainActivity : Activity(), SensorEventListener {
    line.addView(value)
    root.addView(line, LinearLayout.LayoutParams(
     LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
-   ).apply { bottomMargin = 3 })
+   ).apply { bottomMargin = 0 })
    val slider = SeekBar(this).apply {
     max = 50
     progress = current - 30
@@ -452,7 +460,7 @@ class MainActivity : Activity(), SensorEventListener {
    }
    root.addView(slider, LinearLayout.LayoutParams(
     LinearLayout.LayoutParams.MATCH_PARENT, dp(30)
-   ).apply { bottomMargin = 3 })
+   ).apply { bottomMargin = 0 })
   }
   heightControl("Главный экран", "home_button_height_dp", 40)
   heightControl("Кнопки меню", "menu_button_height_dp", 32)
@@ -462,7 +470,7 @@ class MainActivity : Activity(), SensorEventListener {
    showAppSettings()
   }, LinearLayout.LayoutParams(
    LinearLayout.LayoutParams.MATCH_PARENT, dp(menuButtonHeightDp())
-  ).apply { bottomMargin = 3 })
+  ).apply { bottomMargin = 0 })
   root.addView(button("Назад") { showSettings() }, LinearLayout.LayoutParams(
    LinearLayout.LayoutParams.MATCH_PARENT, dp(menuButtonHeightDp())
   ))
@@ -735,12 +743,12 @@ class MainActivity : Activity(), SensorEventListener {
    else if (tracker == "SPO2") startSpO2Measurement()
    else startSamsungTrackerTest(tracker)
    updateMeasurementUi()
-  }, LinearLayout.LayoutParams(0, dp(menuButtonHeightDp()), 1f).apply { setMargins(dp(3), dp(2), dp(3), dp(2)) })
+  }, LinearLayout.LayoutParams(0, dp(menuButtonHeightDp()), 1f).apply { setMargins(dp(3), 0, dp(3), 0) })
   if (tracker == "BIA" || tracker == "ECG") {
    actions.addView(button("История") {
     if (tracker == "ECG") { if (ecgRecording) finishEcgRecording() else stopSamsungTrackerTest(); showEcgHistory() }
     else { stopSamsungTrackerTest(); showBiaHistory() }
-   }, LinearLayout.LayoutParams(0, dp(menuButtonHeightDp()), 1f).apply { setMargins(dp(3), dp(2), dp(3), dp(2)) })
+   }, LinearLayout.LayoutParams(0, dp(menuButtonHeightDp()), 1f).apply { setMargins(dp(3), 0, dp(3), 0) })
   }
   root.addView(actions)
   root.addView(button("Назад") {
