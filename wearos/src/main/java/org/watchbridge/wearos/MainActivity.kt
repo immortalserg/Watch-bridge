@@ -102,7 +102,7 @@ class MainActivity : Activity(), SensorEventListener {
  }
  private fun button(title: String, action: () -> Unit): Button = Button(this).apply {
   text = title; isAllCaps = false; textSize = 11f; setTextColor(skin().fg)
-  minHeight = dp(34); minimumHeight = dp(34); minWidth = 0; minimumWidth = 0
+  minHeight = dp(52); minimumHeight = dp(52); minWidth = 0; minimumWidth = 0
   setPadding(dp(8), dp(5), dp(8), dp(5))
   background = GradientDrawable().apply { setColor(skin().tile); cornerRadius = dp(12).toFloat() }
   setOnClickListener { action() }
@@ -227,22 +227,22 @@ class MainActivity : Activity(), SensorEventListener {
   val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
   homePulseButton = button("♥") { homeTap("heart") { startHomeHeart() } }
   homeOxygenButton = button("O₂  " + (prefs.getString("last_oxygen", null) ?: "—")) { homeTap("oxygen") { startHomeOxygen() } }
-  actions.addView(homePulseButton, LinearLayout.LayoutParams(0, dp(42), 1f).apply { setMargins(dp(1), dp(1), dp(1), dp(1)) })
-  actions.addView(homeOxygenButton, LinearLayout.LayoutParams(0, dp(42), 1f).apply { setMargins(dp(1), dp(1), dp(1), dp(1)) })
+  actions.addView(homePulseButton, LinearLayout.LayoutParams(0, dp(52), 1f).apply { setMargins(dp(1), dp(1), dp(1), dp(1)) })
+  actions.addView(homeOxygenButton, LinearLayout.LayoutParams(0, dp(52), 1f).apply { setMargins(dp(1), dp(1), dp(1), dp(1)) })
   root.addView(actions)
   renderHeartButton()
   val indicators = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
   val stepsButton = button("♟  " + (todaySteps()?.toString() ?: "—")) { showJournal("steps") }
   val sleepButton = button("☾  —") { showJournal("sleep") }
   stepsValue = stepsButton
-  indicators.addView(stepsButton, LinearLayout.LayoutParams(0, dp(42), 1f).apply { setMargins(dp(1), dp(1), dp(1), dp(1)) })
-  indicators.addView(sleepButton, LinearLayout.LayoutParams(0, dp(42), 1f).apply { setMargins(dp(1), dp(1), dp(1), dp(1)) })
+  indicators.addView(stepsButton, LinearLayout.LayoutParams(0, dp(52), 1f).apply { setMargins(dp(1), dp(1), dp(1), dp(1)) })
+  indicators.addView(sleepButton, LinearLayout.LayoutParams(0, dp(52), 1f).apply { setMargins(dp(1), dp(1), dp(1), dp(1)) })
   root.addView(indicators)
   val measurements = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-  measurements.addView(button("BIA") { showMeasurement("BIA") }, LinearLayout.LayoutParams(0, dp(42), 1f).apply { setMargins(dp(1), dp(1), dp(1), dp(1)) })
-  measurements.addView(button("ЭКГ") { showMeasurement("ECG") }, LinearLayout.LayoutParams(0, dp(42), 1f).apply { setMargins(dp(1), dp(1), dp(1), dp(1)) })
+  measurements.addView(button("BIA") { showMeasurement("BIA") }, LinearLayout.LayoutParams(0, dp(52), 1f).apply { setMargins(dp(1), dp(1), dp(1), dp(1)) })
+  measurements.addView(button("ЭКГ") { showMeasurement("ECG") }, LinearLayout.LayoutParams(0, dp(52), 1f).apply { setMargins(dp(1), dp(1), dp(1), dp(1)) })
   root.addView(measurements)
-  root.addView(button("Настройки") { showSettings() }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(42)).apply { setMargins(dp(1), dp(1), dp(1), dp(1)) })
+  root.addView(button("Настройки") { showSettings() }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(52)).apply { setMargins(dp(1), dp(1), dp(1), dp(1)) })
   showPage(root)
  }
  private fun startHomeOxygen() {
@@ -328,7 +328,7 @@ class MainActivity : Activity(), SensorEventListener {
   })
   fun settingsButton(title: String, action: () -> Unit) {
    root.addView(button(title, action), LinearLayout.LayoutParams(
-    LinearLayout.LayoutParams.MATCH_PARENT, dp(42)
+    LinearLayout.LayoutParams.MATCH_PARENT, dp(52)
    ).apply { setMargins(dp(1), dp(1), dp(1), dp(1)) })
   }
   settingsButton("Настройки приложения") { showAppSettings() }
@@ -356,7 +356,7 @@ class MainActivity : Activity(), SensorEventListener {
   root.addView(label("Измерения и история показателей здоровья. Передача данных в Home Assistant через Bluetooth LE или MQTT.", 11f))
   root.addView(label("Разработчик: Kusheev Sergei", 11f))
   root.addView(button("Назад") { showSettings() }, LinearLayout.LayoutParams(
-   LinearLayout.LayoutParams.MATCH_PARENT, dp(42)
+   LinearLayout.LayoutParams.MATCH_PARENT, dp(52)
   ).apply { setMargins(dp(1), dp(1), dp(1), dp(1)) })
   showPage(root)
  }
@@ -674,12 +674,12 @@ class MainActivity : Activity(), SensorEventListener {
    else if (tracker == "SPO2") startSpO2Measurement()
    else startSamsungTrackerTest(tracker)
    updateMeasurementUi()
-  }, LinearLayout.LayoutParams(0, dp(40), 1f).apply { setMargins(dp(3), dp(2), dp(3), dp(2)) })
+  }, LinearLayout.LayoutParams(0, dp(52), 1f).apply { setMargins(dp(3), dp(2), dp(3), dp(2)) })
   if (tracker == "BIA" || tracker == "ECG") {
    actions.addView(button("История") {
     if (tracker == "ECG") { if (ecgRecording) finishEcgRecording() else stopSamsungTrackerTest(); showEcgHistory() }
     else { stopSamsungTrackerTest(); showBiaHistory() }
-   }, LinearLayout.LayoutParams(0, dp(40), 1f).apply { setMargins(dp(3), dp(2), dp(3), dp(2)) })
+   }, LinearLayout.LayoutParams(0, dp(52), 1f).apply { setMargins(dp(3), dp(2), dp(3), dp(2)) })
   }
   root.addView(actions)
   root.addView(button("Назад") {
@@ -970,11 +970,11 @@ class MainActivity : Activity(), SensorEventListener {
   }
   val nav = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
   nav.addView(button("◀ 3 с") { startSample = (startSample - 1500).coerceAtLeast(0); redraw() },
-   LinearLayout.LayoutParams(0, dp(40), 1f))
+   LinearLayout.LayoutParams(0, dp(52), 1f))
   nav.addView(button("3 с ▶") {
    startSample = (startSample + 1500).coerceAtMost(((values.size - 1) / 1500 * 1500).coerceAtLeast(0))
    redraw()
-  }, LinearLayout.LayoutParams(0, dp(40), 1f))
+  }, LinearLayout.LayoutParams(0, dp(52), 1f))
   root.addView(nav)
   root.addView(button("Фильтр: вкл/выкл") { filtered = !filtered; redraw() })
   val exportStatus = label("", 11f)
