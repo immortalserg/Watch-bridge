@@ -41,6 +41,7 @@ class WatchMqtt(private val context: Context, private val report: (String) -> Un
     if (old.optString("id") == id && old.optString("kind") == kind) return
    }
    val record = JSONObject().put("kind", kind).put("payload", payload).put("id", id)
+    .put("send_to_ha", prefs.getBoolean("ha_mqtt_enabled", true))
    val updated = JSONArray()
    val start = (items.length() - maxPending + 1).coerceAtLeast(0)
    for (i in start until items.length()) updated.put(items.get(i))
@@ -55,7 +56,7 @@ class WatchMqtt(private val context: Context, private val report: (String) -> Un
    val next = synchronized(this) {
     try { JSONArray(prefs.getString(pendingKey, "[]")).optJSONObject(0) } catch (_: Exception) { null }
    } ?: return
-   if (!send(next.optString("kind"), next.optString("payload"))) return
+   if (!send(next.optString("kind"), next.optString("payload"), next.optBoolean("send_to_ha", true))) return
    synchronized(this) {
     val items = try { JSONArray(prefs.getString(pendingKey, "[]")) } catch (_: Exception) { JSONArray() }
     val updated = JSONArray()
@@ -65,7 +66,7 @@ class WatchMqtt(private val context: Context, private val report: (String) -> Un
    }
   }
  }
- private fun send(kind: String, payload: String): Boolean {
+ private fun send(kind: String, payload: String, sendToHa: Boolean = false): Boolean {
   if (!prefs.getBoolean("mqtt_enabled", false)) return false
   val host = prefs.getString("mqtt_host", "")?.trim().orEmpty()
   val port = prefs.getString("mqtt_port", "8883")?.toIntOrNull() ?: return false
@@ -96,8 +97,9 @@ class WatchMqtt(private val context: Context, private val report: (String) -> Un
     report("MQTT: подключено")
    }
    stage = "публикация $kind"
-   client?.publish("rogbid/$deviceId/history/$kind", payload.toByteArray(Charsets.UTF_8), 1, false)
-    ?: throw IllegalStateException("MQTT disconnected")
+   val connected = client ?: throw IllegalStateException("MQTT disconnected")
+   connected.publish("watchbridge/$deviceId/history/$kind", payload.toByteArray(Charsets.UTF_8), 1, false)
+   if (sendToHa) connected.publish("rogbid/$deviceId/history/$kind", payload.toByteArray(Charsets.UTF_8), 1, false)
    report(if (kind == "diagnostic") "MQTT: тест успешен" else "MQTT: отправлено $kind")
    true
   } catch (e: Exception) {
