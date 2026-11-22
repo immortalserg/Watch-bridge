@@ -519,12 +519,20 @@ class MainActivity : Activity(), SensorEventListener {
    return input
   }
   var enabled = prefs.getBoolean("mqtt_enabled", false)
+  var haEnabled = prefs.getBoolean("ha_mqtt_enabled", true)
   lateinit var enabledToggle: Button
-  enabledToggle = button("Отправлять в Home Assistant: " + if (enabled) "Да" else "Нет") {
+  enabledToggle = button("Отправлять в MQTT: " + if (enabled) "Да" else "Нет") {
    enabled = !enabled
-   enabledToggle.text = "Отправлять в Home Assistant: " + if (enabled) "Да" else "Нет"
+   enabledToggle.text = "Отправлять в MQTT: " + if (enabled) "Да" else "Нет"
   }
   root.addView(enabledToggle)
+  lateinit var haToggle: Button
+  haToggle = button("Дополнительно в Home Assistant: " + if (haEnabled) "Да" else "Нет") {
+   haEnabled = !haEnabled
+   haToggle.text = "Дополнительно в Home Assistant: " + if (haEnabled) "Да" else "Нет"
+  }
+  root.addView(haToggle)
+  root.addView(label("MQTT: watchbridge/<device>/history; HA: дополнительно rogbid/<device>/history", 10f))
   val host = field("MQTT сервер (IP или DNS)", "mqtt_host")
   val port = field("Порт (TLS: 8883, обычный: 1883)", "mqtt_port", "8883")
   val user = field("Логин", "mqtt_user")
@@ -550,6 +558,7 @@ class MainActivity : Activity(), SensorEventListener {
     .putString("mqtt_user", user.text.toString().trim())
     .putString("mqtt_password", pass.text.toString())
     .putBoolean("mqtt_enabled", enabled)
+    .putBoolean("ha_mqtt_enabled", haEnabled)
     .putBoolean("mqtt_tls", tls).apply()
    mqttInfo = "Настройки сохранены"
    notice.text = mqttInfo
