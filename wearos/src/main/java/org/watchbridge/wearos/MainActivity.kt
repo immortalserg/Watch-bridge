@@ -329,7 +329,7 @@ class MainActivity : Activity(), SensorEventListener {
   fun settingsButton(title: String, action: () -> Unit) {
    root.addView(button(title, action), LinearLayout.LayoutParams(
     LinearLayout.LayoutParams.MATCH_PARENT, dp(42)
-   ).apply { setMargins(1, 1, 1, 1) })
+   ).apply { setMargins(dp(1), dp(1), dp(1), dp(1)) })
   }
   settingsButton("Настройки приложения") { showAppSettings() }
   settingsButton("Параметры тела") { showBodySettings() }
@@ -357,7 +357,7 @@ class MainActivity : Activity(), SensorEventListener {
   root.addView(label("Разработчик: Kusheev Sergei", 11f))
   root.addView(button("Назад") { showSettings() }, LinearLayout.LayoutParams(
    LinearLayout.LayoutParams.MATCH_PARENT, dp(42)
-  ).apply { setMargins(1, 1, 1, 1) })
+  ).apply { setMargins(dp(1), dp(1), dp(1), dp(1)) })
   showPage(root)
  }
  private fun showAppSettings() {
