@@ -485,7 +485,16 @@ class MainActivity : Activity(), SensorEventListener {
   }
   historyToggle("Отправка всей истории", "history_send_button_enabled")
   historyToggle("Удаление записей", "history_delete_button_enabled")
-  historyToggle("Автосбор пульса (при открытом приложении)", "auto_heart_collection")
+  historyToggle("Автосбор пульса", "auto_heart_collection")
+  var backgroundEnabled = prefs.getBoolean("background_sync_enabled", false)
+  lateinit var backgroundToggle: Button
+  backgroundToggle = button("Фоновый сбор и MQTT: " + if (backgroundEnabled) "Вкл" else "Выкл") {
+   backgroundEnabled = !backgroundEnabled
+   prefs.edit().putBoolean("background_sync_enabled", backgroundEnabled).apply()
+   updateBackgroundService()
+   backgroundToggle.text = "Фоновый сбор и MQTT: " + if (backgroundEnabled) "Вкл" else "Выкл"
+  }
+  root.addView(backgroundToggle)
   root.addView(button("По умолчанию: 40 / 32 dp") {
    prefs.edit().putInt("home_button_height_dp", 40)
     .putInt("menu_button_height_dp", 32).apply()
@@ -1368,11 +1377,29 @@ class MainActivity : Activity(), SensorEventListener {
   manager = getSystemService(SENSOR_SERVICE) as SensorManager
   mqtt = WatchMqtt(this) { msg -> runOnUiThread { mqttInfo = msg; refresh() } }
   if (prefs.getBoolean("ble_enabled", false)) startBle()
+  if (prefs.getBoolean("background_sync_enabled", false)) updateBackgroundService()
   showHome()
   requestMissingPermissions()
   refresh()
  }
 
+ private fun updateBackgroundService() {
+  val intent = Intent(this, WatchSyncService::class.java)
+  if (prefs.getBoolean("background_sync_enabled", false)) {
+   intent.action = WatchSyncService.ACTION_START
+   try { androidxStartForegroundService(intent) } catch (e: Exception) {
+    android.util.Log.w("WatchBridgeSync", "Cannot start foreground service", e)
+    android.widget.Toast.makeText(this, "Не удалось запустить фоновый сервис: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
+   }
+  } else {
+   intent.action = WatchSyncService.ACTION_STOP
+   startService(intent)
+  }
+  if (::manager.isInitialized) startSensors()
+ }
+ private fun androidxStartForegroundService(intent: Intent) {
+  if (Build.VERSION.SDK_INT >= 26) startForegroundService(intent) else startService(intent)
+ }
  private fun startBle() {
   if (Build.VERSION.SDK_INT >= 31) {
    val needed = listOf(Manifest.permission.BLUETOOTH_CONNECT, Manifest.permission.BLUETOOTH_ADVERTISE)
@@ -1495,7 +1522,7 @@ class MainActivity : Activity(), SensorEventListener {
 
  override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
   super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-  if (requestCode == 100) startSensors()
+  if (requestCode == 100) { startSensors(); if (prefs.getBoolean("background_sync_enabled", false)) updateBackgroundService() }
   if (requestCode == 101) {
    healthPermissionRequestPending = false
    val denied = healthPermissions.filter { checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }
@@ -1507,6 +1534,10 @@ class MainActivity : Activity(), SensorEventListener {
 
  private fun startSensors() {
   manager.unregisterListener(this)
+  if (prefs.getBoolean("background_sync_enabled", false)) {
+   sensorInfo = "Датчики обслуживает фоновый сервис"
+   return
+  }
   val details = mutableListOf<String>()
   val sensors = listOf(Sensor.TYPE_HEART_RATE, Sensor.TYPE_STEP_COUNTER)
   for (type in sensors) {
