@@ -32,6 +32,7 @@ class WatchSyncService : Service(), SensorEventListener {
  private val prefs by lazy { getSharedPreferences("watch_bridge", MODE_PRIVATE) }
  private lateinit var sensors: SensorManager
  private var mqtt: WatchMqtt? = null
+ private var ble: WatchBleServer? = null
  override fun onBind(intent: Intent?): IBinder? = null
  override fun onCreate() {
   super.onCreate()
@@ -61,6 +62,10 @@ class WatchSyncService : Service(), SensorEventListener {
   }
   if (mqtt == null) mqtt = WatchMqtt(this) { message -> Log.d("WatchBridgeSync", message) }
   mqtt?.retryPending()
+  if (prefs.getBoolean("ble_enabled", false)) {
+   if (ble == null) ble = WatchBleServer(this) { message -> Log.d("WatchBridgeSyncBLE", message) }
+   ble?.start()
+  } else { ble?.stop(); ble = null }
   sensors.unregisterListener(this)
   if (checkSelfPermission(Manifest.permission.ACTIVITY_RECOGNITION) == PackageManager.PERMISSION_GRANTED)
    sensors.getDefaultSensor(Sensor.TYPE_STEP_COUNTER)?.let { sensors.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL) }
@@ -87,6 +92,7 @@ class WatchSyncService : Service(), SensorEventListener {
     val data = JSONObject().put("kind", "heart").put("id", "heart:$now")
      .put("measured_at", Instant.ofEpochMilli(now).toString()).put("bpm", value.toInt())
     mqtt?.publish("heart", data.toString())
+    ble?.publishJournal(data.toString())
    }
    Sensor.TYPE_STEP_COUNTER -> {
     val value = event.values[0]
@@ -107,6 +113,7 @@ class WatchSyncService : Service(), SensorEventListener {
       .put("measured_at", Instant.now().toString()).put("date", day)
       .put("steps", updated).put("diatance", 0).put("kcal", 0)
      mqtt?.publish("steps", data.toString())
+     ble?.publishJournal(data.toString())
     }
    }
   }
@@ -116,6 +123,8 @@ class WatchSyncService : Service(), SensorEventListener {
   sensors.unregisterListener(this)
   mqtt?.close()
   mqtt = null
+  ble?.stop()
+  ble = null
   super.onDestroy()
  }
 }
