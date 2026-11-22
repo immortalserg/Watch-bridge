@@ -19,6 +19,7 @@ class WatchBleServer(private val context: Context, private val report: (String) 
  companion object {
   val SERVICE_UUID: UUID = UUID.fromString("f3e9b8c0-4471-4a42-a14b-6f2f7a91c001")
   val JOURNAL_UUID: UUID = UUID.fromString("f3e9b8c0-4471-4a42-a14b-6f2f7a91c003")
+  val IDENTITY_UUID: UUID = UUID.fromString("f3e9b8c0-4471-4a42-a14b-6f2f7a91c004")
   val DATA_UUID: UUID = UUID.fromString("f3e9b8c0-4471-4a42-a14b-6f2f7a91c002")
   private val CCC_UUID: UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
  }
@@ -35,11 +36,15 @@ class WatchBleServer(private val context: Context, private val report: (String) 
    if (newState == BluetoothProfile.STATE_DISCONNECTED) synchronized(subscribers) { subscribers.remove(device.address) }
   }
   override fun onCharacteristicReadRequest(device: BluetoothDevice, requestId: Int, offset: Int, characteristic: BluetoothGattCharacteristic) {
-   if (characteristic.uuid != DATA_UUID && characteristic.uuid != JOURNAL_UUID) {
+   if (characteristic.uuid != DATA_UUID && characteristic.uuid != JOURNAL_UUID && characteristic.uuid != IDENTITY_UUID) {
     server?.sendResponse(device, requestId, BluetoothGatt.GATT_REQUEST_NOT_SUPPORTED, offset, null)
     return
    }
-   val bytes = if (characteristic.uuid == JOURNAL_UUID) latestJournal else latest
+   val bytes = when (characteristic.uuid) {
+    JOURNAL_UUID -> latestJournal
+    IDENTITY_UUID -> (context.getSharedPreferences("watch_bridge", Context.MODE_PRIVATE).getString("device_id", "") ?: "").toByteArray(Charsets.UTF_8)
+    else -> latest
+   }
    if (offset > bytes.size) server?.sendResponse(device, requestId, BluetoothGatt.GATT_INVALID_OFFSET, offset, null)
    else server?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, offset, bytes.copyOfRange(offset, bytes.size))
   }
@@ -90,6 +95,8 @@ class WatchBleServer(private val context: Context, private val report: (String) 
    journal.addDescriptor(BluetoothGattDescriptor(CCC_UUID,
     BluetoothGattDescriptor.PERMISSION_READ or BluetoothGattDescriptor.PERMISSION_WRITE))
    service.addCharacteristic(journal)
+   service.addCharacteristic(BluetoothGattCharacteristic(IDENTITY_UUID,
+    BluetoothGattCharacteristic.PROPERTY_READ, BluetoothGattCharacteristic.PERMISSION_READ))
    journalCharacteristic = journal
    server = gatt
    dataCharacteristic = characteristic
