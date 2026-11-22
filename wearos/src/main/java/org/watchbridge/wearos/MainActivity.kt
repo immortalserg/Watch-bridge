@@ -15,6 +15,7 @@ import android.os.OutcomeReceiver
 import java.time.Instant
 import java.time.temporal.ChronoUnit
 import android.app.Activity
+import android.app.AlertDialog
 import android.app.DatePickerDialog
 import java.time.LocalDate
 import java.time.Period
@@ -300,6 +301,54 @@ class MainActivity : Activity(), SensorEventListener {
   mqtt?.publish("steps", event.toString())
   bleServer?.publishJournal(event.toString())
  }
+ private fun sendFullHistory() {
+  var count = 0
+  for (kind in listOf("heart", "oxygen")) {
+   val history = try { JSONArray(prefs.getString("vital_history_$kind", "[]")) } catch (_: Exception) { JSONArray() }
+   for (i in history.length() - 1 downTo 0) {
+    val entry = history.optJSONObject(i) ?: continue
+    val time = entry.optLong("time", 0L)
+    val value = entry.optInt("value", 0)
+    if (time <= 0L || value <= 0) continue
+    transmitVital(kind, value, time)
+    count++
+   }
+  }
+  val steps = stepHistory()
+  for (day in steps.keys().asSequence().toList().sorted()) {
+   val entry = steps.optJSONObject(day) ?: continue
+   val event = JSONObject().put("kind", "steps").put("id", "steps:$day")
+    .put("measured_at", day + "T12:00:00Z").put("date", day)
+    .put("steps", entry.optLong("steps", 0L)).put("diatance", 0).put("kcal", 0)
+   mqtt?.publish("steps", event.toString())
+   bleServer?.publishJournal(event.toString())
+   count++
+  }
+  android.widget.Toast.makeText(this, "Передано в очередь отправки: $count записей", android.widget.Toast.LENGTH_LONG).show()
+ }
+ private fun confirmDeleteHistory(kind: String, id: String) {
+  AlertDialog.Builder(this).setTitle("Удалить запись?")
+   .setMessage("Запись будет удалена из локальной истории часов.")
+   .setNegativeButton("Отмена", null)
+   .setPositiveButton("Удалить") { _, _ ->
+    if (!prefs.getBoolean("history_delete_button_enabled", false)) return@setPositiveButton
+    if (kind == "steps") {
+     val history = stepHistory()
+     history.remove(id)
+     prefs.edit().putString("step_daily_history", history.toString()).apply()
+    } else {
+     val key = "vital_history_$kind"
+     val history = try { JSONArray(prefs.getString(key, "[]")) } catch (_: Exception) { JSONArray() }
+     val updated = JSONArray()
+     for (i in 0 until history.length()) {
+      val item = history.optJSONObject(i) ?: continue
+      if (item.optLong("time").toString() != id) updated.put(item)
+     }
+     prefs.edit().putString(key, updated.toString()).apply()
+    }
+    showJournal(kind)
+   }.show()
+ }
  private fun showJournal(kind: String) {
   stopHeartBlink()
   stopOxygenBlink()
@@ -308,13 +357,21 @@ class MainActivity : Activity(), SensorEventListener {
   root.addView(button("← Назад") { showHome() })
   val title = when(kind) { "heart" -> "История пульса"; "oxygen" -> "История кислорода"; "steps" -> "История шагов"; else -> "История сна" }
   root.addView(label(title, 17f))
+  if (prefs.getBoolean("history_send_button_enabled", false)) root.addView(button("Отправить всю историю") { sendFullHistory() })
   if (kind == "heart" || kind == "oxygen") {
    val history = try { JSONArray(prefs.getString("vital_history_$kind", "[]")) } catch (_: Exception) { JSONArray() }
    if (history.length() == 0) root.addView(label("Измерений пока нет", 12f))
    for (i in 0 until history.length()) {
     val entry = history.optJSONObject(i) ?: continue
     val date = SimpleDateFormat("dd.MM HH:mm", Locale.getDefault()).format(Date(entry.optLong("time")))
-    root.addView(label("$date   ${entry.optInt("value")} " + (if (kind == "heart") "уд/мин" else "%"), 12f))
+    val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+    row.addView(label("$date   ${entry.optInt("value")} " + (if (kind == "heart") "уд/мин" else "%"), 12f),
+     LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+    if (prefs.getBoolean("history_delete_button_enabled", false)) {
+     row.addView(button("✕") { confirmDeleteHistory(kind, entry.optLong("time").toString()) },
+      LinearLayout.LayoutParams(dp(34), dp(menuButtonHeightDp())))
+    }
+    root.addView(row)
    }
   } else if (kind == "steps") {
    root.addView(button("Отправить шаги по MQTT") { publishCurrentSteps(); showJournal("steps") })
@@ -324,7 +381,14 @@ class MainActivity : Activity(), SensorEventListener {
    if (days.isEmpty()) root.addView(label("Данных пока нет", 12f))
    days.forEach { day ->
     val entry = history.optJSONObject(day) ?: return@forEach
-    root.addView(label("$day   ${entry.optInt("steps")} шагов", 12f))
+    val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+    row.addView(label("$day   ${entry.optInt("steps")} шагов", 12f),
+     LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+    if (prefs.getBoolean("history_delete_button_enabled", false)) {
+     row.addView(button("✕") { confirmDeleteHistory("steps", day) },
+      LinearLayout.LayoutParams(dp(34), dp(menuButtonHeightDp())))
+    }
+    root.addView(row)
    }
    root.addView(label("Учёт начинается с первого запуска. Для точного суточного итога нужна синхронизация с системной историей шагов.", 10f))
   } else root.addView(label("История пока не подключена", 12f))
@@ -464,6 +528,20 @@ class MainActivity : Activity(), SensorEventListener {
   }
   heightControl("Главный экран", "home_button_height_dp", 40)
   heightControl("Кнопки меню", "menu_button_height_dp", 32)
+  fun historyToggle(title: String, key: String) {
+   var enabled = prefs.getBoolean(key, false)
+   lateinit var control: Button
+   control = button("$title: " + if (enabled) "Вкл" else "Выкл") {
+    enabled = !enabled
+    prefs.edit().putBoolean(key, enabled).apply()
+    control.text = "$title: " + if (enabled) "Вкл" else "Выкл"
+   }
+   root.addView(control, LinearLayout.LayoutParams(
+    LinearLayout.LayoutParams.MATCH_PARENT, dp(menuButtonHeightDp())
+   ))
+  }
+  historyToggle("Отправка всей истории", "history_send_button_enabled")
+  historyToggle("Удаление записей", "history_delete_button_enabled")
   root.addView(button("По умолчанию: 40 / 32 dp") {
    prefs.edit().putInt("home_button_height_dp", 40)
     .putInt("menu_button_height_dp", 32).apply()
