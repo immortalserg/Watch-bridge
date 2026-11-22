@@ -301,54 +301,6 @@ class MainActivity : Activity(), SensorEventListener {
   mqtt?.publish("steps", event.toString())
   bleServer?.publishJournal(event.toString())
  }
- private fun sendFullHistory() {
-  var count = 0
-  for (kind in listOf("heart", "oxygen")) {
-   val history = try { JSONArray(prefs.getString("vital_history_$kind", "[]")) } catch (_: Exception) { JSONArray() }
-   for (i in history.length() - 1 downTo 0) {
-    val entry = history.optJSONObject(i) ?: continue
-    val time = entry.optLong("time", 0L)
-    val value = entry.optInt("value", 0)
-    if (time <= 0L || value <= 0) continue
-    transmitVital(kind, value, time)
-    count++
-   }
-  }
-  val steps = stepHistory()
-  for (day in steps.keys().asSequence().toList().sorted()) {
-   val entry = steps.optJSONObject(day) ?: continue
-   val event = JSONObject().put("kind", "steps").put("id", "steps:$day")
-    .put("measured_at", day + "T12:00:00Z").put("date", day)
-    .put("steps", entry.optLong("steps", 0L)).put("diatance", 0).put("kcal", 0)
-   mqtt?.publish("steps", event.toString())
-   bleServer?.publishJournal(event.toString())
-   count++
-  }
-  android.widget.Toast.makeText(this, "Передано в очередь отправки: $count записей", android.widget.Toast.LENGTH_LONG).show()
- }
- private fun confirmDeleteHistory(kind: String, id: String) {
-  AlertDialog.Builder(this).setTitle("Удалить запись?")
-   .setMessage("Запись будет удалена из локальной истории часов.")
-   .setNegativeButton("Отмена", null)
-   .setPositiveButton("Удалить") { _, _ ->
-    if (!prefs.getBoolean("history_delete_button_enabled", false)) return@setPositiveButton
-    if (kind == "steps") {
-     val history = stepHistory()
-     history.remove(id)
-     prefs.edit().putString("step_daily_history", history.toString()).apply()
-    } else {
-     val key = "vital_history_$kind"
-     val history = try { JSONArray(prefs.getString(key, "[]")) } catch (_: Exception) { JSONArray() }
-     val updated = JSONArray()
-     for (i in 0 until history.length()) {
-      val item = history.optJSONObject(i) ?: continue
-      if (item.optLong("time").toString() != id) updated.put(item)
-     }
-     prefs.edit().putString(key, updated.toString()).apply()
-    }
-    showJournal(kind)
-   }.show()
- }
  private fun showJournal(kind: String) {
   stopHeartBlink()
   stopOxygenBlink()
@@ -357,7 +309,6 @@ class MainActivity : Activity(), SensorEventListener {
   root.addView(button("← Назад") { showHome() })
   val title = when(kind) { "heart" -> "История пульса"; "oxygen" -> "История кислорода"; "steps" -> "История шагов"; else -> "История сна" }
   root.addView(label(title, 17f))
-  if (prefs.getBoolean("history_send_button_enabled", false)) root.addView(button("Отправить всю историю") { sendFullHistory() })
   if (kind == "heart" || kind == "oxygen") {
    val history = try { JSONArray(prefs.getString("vital_history_$kind", "[]")) } catch (_: Exception) { JSONArray() }
    if (history.length() == 0) root.addView(label("Измерений пока нет", 12f))
@@ -367,10 +318,6 @@ class MainActivity : Activity(), SensorEventListener {
     val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
     row.addView(label("$date   ${entry.optInt("value")} " + (if (kind == "heart") "уд/мин" else "%"), 12f),
      LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
-    if (prefs.getBoolean("history_delete_button_enabled", false)) {
-     row.addView(button("✕") { confirmDeleteHistory(kind, entry.optLong("time").toString()) },
-      LinearLayout.LayoutParams(dp(34), dp(menuButtonHeightDp())))
-    }
     root.addView(row)
    }
   } else if (kind == "steps") {
@@ -384,10 +331,6 @@ class MainActivity : Activity(), SensorEventListener {
     val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
     row.addView(label("$day   ${entry.optInt("steps")} шагов", 12f),
      LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
-    if (prefs.getBoolean("history_delete_button_enabled", false)) {
-     row.addView(button("✕") { confirmDeleteHistory("steps", day) },
-      LinearLayout.LayoutParams(dp(34), dp(menuButtonHeightDp())))
-    }
     root.addView(row)
    }
    root.addView(label("Учёт начинается с первого запуска. Для точного суточного итога нужна синхронизация с системной историей шагов.", 10f))
@@ -1037,6 +980,46 @@ class MainActivity : Activity(), SensorEventListener {
   measurementProgress = (durationMs / 300L).toInt().coerceIn(0, 100)
   updateMeasurementUi()
  }
+ private fun sendMeasurementHistory(kind: String) {
+  var count = 0
+  val history = if (kind == "bia") normalizedBiaHistory() else
+   try { JSONArray(prefs.getString("ecg_history", "[]")) } catch (_: Exception) { JSONArray() }
+  for (i in history.length() - 1 downTo 0) {
+   val entry = history.optJSONObject(i) ?: continue
+   val timestamp = entry.optLong("timestamp", 0L)
+   if (timestamp <= 0L) continue
+   val event = JSONObject(entry.toString()).put("kind", kind).put("id", "$kind:$timestamp")
+    .put("measured_at", java.time.Instant.ofEpochMilli(timestamp).toString())
+   if (kind == "ecg") event.remove("file") // Raw ECG waveform is not transmitted.
+   mqtt?.publish(kind, event.toString())
+   bleServer?.publishJournal(event.toString())
+   count++
+  }
+  android.widget.Toast.makeText(this, "В очередь отправки: $count записей", android.widget.Toast.LENGTH_LONG).show()
+ }
+ private fun confirmDeleteMeasurement(kind: String, timestamp: Long) {
+  AlertDialog.Builder(this).setTitle("Удалить запись?")
+   .setMessage(if (kind == "ecg") "Удалить запись и локальный CSV-файл ЭКГ?" else "Удалить локальную запись BIA?")
+   .setNegativeButton("Отмена", null)
+   .setPositiveButton("Удалить") { _, _ ->
+    if (!prefs.getBoolean("history_delete_button_enabled", false)) return@setPositiveButton
+    val key = if (kind == "ecg") "ecg_history" else "bia_history"
+    val history = if (kind == "bia") normalizedBiaHistory() else
+     try { JSONArray(prefs.getString(key, "[]")) } catch (_: Exception) { JSONArray() }
+    val updated = JSONArray()
+    for (i in 0 until history.length()) {
+     val item = history.optJSONObject(i) ?: continue
+     if (item.optLong("timestamp") == timestamp) {
+      if (kind == "ecg") {
+       val file = item.optString("file")
+       if (Regex("^ecg_[0-9]+\\.csv$").matches(file)) deleteFile(file)
+      }
+     } else updated.put(item)
+    }
+    prefs.edit().putString(key, updated.toString()).apply()
+    if (kind == "ecg") showEcgHistory() else showBiaHistory()
+   }.show()
+ }
  private fun showEcgHistory() {
   screen = "ecg_history"
   val root = page().apply { setPadding(dp(10), dp(2), dp(10), dp(10)) }
@@ -1045,15 +1028,21 @@ class MainActivity : Activity(), SensorEventListener {
    setPadding(dp(2), 0, dp(2), dp(2))
   })
   root.addView(button("← Назад") { showMeasurement("ECG") })
+  if (prefs.getBoolean("history_send_button_enabled", false)) {
+   root.addView(button("Отправить всю историю") { sendMeasurementHistory("ecg") })
+  }
   val history = try { JSONArray(prefs.getString("ecg_history", "[]")) } catch (_: Exception) { JSONArray() }
   if (history.length() == 0) root.addView(label("Записей пока нет", 12f))
   for (i in 0 until history.length()) {
    val item = history.optJSONObject(i) ?: continue
    val date = SimpleDateFormat("dd.MM HH:mm", Locale.getDefault()).format(Date(item.optLong("timestamp")))
    val file = item.optString("file")
-   root.addView(button("$date · ${item.optLong("durationMs") / 1000} с · ${item.optInt("samples")} отсчётов") {
+   val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+   row.addView(button("$date · ${item.optLong("durationMs") / 1000} с · ${item.optInt("samples")} отсчётов") {
     showEcgRecording(file, date)
-   })
+   }, LinearLayout.LayoutParams(0, dp(menuButtonHeightDp()), 1f))
+   if (prefs.getBoolean("history_delete_button_enabled", false)) row.addView(button("✕") { confirmDeleteMeasurement("ecg", item.optLong("timestamp")) }, LinearLayout.LayoutParams(dp(34), dp(menuButtonHeightDp())))
+   root.addView(row)
   }
   root.addView(label("Исходные отсчёты хранятся в CSV на часах.", 11f))
   showPage(root)
@@ -1211,12 +1200,16 @@ class MainActivity : Activity(), SensorEventListener {
    setPadding(dp(2), 0, dp(2), dp(2))
   })
   root.addView(button("← Назад") { showMeasurement("BIA") })
+  if (prefs.getBoolean("history_send_button_enabled", false)) {
+   root.addView(button("Отправить всю историю") { sendMeasurementHistory("bia") })
+  }
   val history = normalizedBiaHistory()
   if (history.length() == 0) root.addView(label("Завершённых измерений пока нет", 12f))
   for (i in 0 until history.length()) {
    val entry = history.optJSONObject(i) ?: continue
    val date = SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault()).format(Date(entry.optLong("timestamp")))
-   root.addView(button(date) {
+   val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+   row.addView(button(date) {
     val details = page()
     details.addView(label(date, 16f))
     val lines = listOf(
@@ -1232,7 +1225,9 @@ class MainActivity : Activity(), SensorEventListener {
     details.addView(button("Назад") { showBiaHistory() })
     screen = "bia_details"
     showPage(details)
-   })
+   }, LinearLayout.LayoutParams(0, dp(menuButtonHeightDp()), 1f))
+   if (prefs.getBoolean("history_delete_button_enabled", false)) row.addView(button("✕") { confirmDeleteMeasurement("bia", entry.optLong("timestamp")) }, LinearLayout.LayoutParams(dp(34), dp(menuButtonHeightDp())))
+   root.addView(row)
   }
   showPage(root)
  }
