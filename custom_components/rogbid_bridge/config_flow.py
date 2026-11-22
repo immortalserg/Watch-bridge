@@ -8,7 +8,7 @@ from homeassistant.components import mqtt
 
 from .const import DOMAIN, CONF_DEVICE_ID
 
-WATCH_TOPIC = re.compile(r"^rogbid/(z10_[a-f0-9]{32})/state$")
+WATCH_TOPIC = re.compile(r"^rogbid/((?:z10|wearos)_[a-f0-9]{32})/state$")
 DISCOVERY_SECONDS = 3
 
 
@@ -50,7 +50,7 @@ class RogbidBridgeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 await self.async_set_unique_id(device_id)
                 self._abort_if_unique_id_configured()
                 return self.async_create_entry(
-                    title=f"Rogbid {device_id[-8:]}",
+                    title=f"{'Wear OS' if device_id.startswith('wearos_') else 'Rogbid'} {device_id[-8:]}",
                     data={CONF_DEVICE_ID: device_id},
                 )
 
@@ -58,7 +58,7 @@ class RogbidBridgeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if watches:
             schema = vol.Schema({
                 vol.Required(CONF_DEVICE_ID): vol.In({
-                    device_id: f"Rogbid Z10 · {device_id[-8:]}"
+                    device_id: f"{'Wear OS' if device_id.startswith('wearos_') else 'Rogbid Z10'} · {device_id[-8:]}"
                     for device_id in watches
                 })
             })
