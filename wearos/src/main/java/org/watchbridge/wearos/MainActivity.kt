@@ -227,22 +227,22 @@ class MainActivity : Activity(), SensorEventListener {
   val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
   homePulseButton = button("♥") { homeTap("heart") { startHomeHeart() } }
   homeOxygenButton = button("O₂  " + (prefs.getString("last_oxygen", null) ?: "—")) { homeTap("oxygen") { startHomeOxygen() } }
-  actions.addView(homePulseButton, LinearLayout.LayoutParams(0, dp(42), 1f).apply { setMargins(dp(4), dp(4), dp(4), dp(4)) })
-  actions.addView(homeOxygenButton, LinearLayout.LayoutParams(0, dp(42), 1f).apply { setMargins(dp(4), dp(4), dp(4), dp(4)) })
+  actions.addView(homePulseButton, LinearLayout.LayoutParams(0, dp(42), 1f).apply { setMargins(dp(1), dp(1), dp(1), dp(1)) })
+  actions.addView(homeOxygenButton, LinearLayout.LayoutParams(0, dp(42), 1f).apply { setMargins(dp(1), dp(1), dp(1), dp(1)) })
   root.addView(actions)
   renderHeartButton()
   val indicators = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
   val stepsButton = button("♟  " + (todaySteps()?.toString() ?: "—")) { showJournal("steps") }
   val sleepButton = button("☾  —") { showJournal("sleep") }
   stepsValue = stepsButton
-  indicators.addView(stepsButton, LinearLayout.LayoutParams(0, dp(42), 1f).apply { setMargins(dp(4), dp(4), dp(4), dp(4)) })
-  indicators.addView(sleepButton, LinearLayout.LayoutParams(0, dp(42), 1f).apply { setMargins(dp(4), dp(4), dp(4), dp(4)) })
+  indicators.addView(stepsButton, LinearLayout.LayoutParams(0, dp(42), 1f).apply { setMargins(dp(1), dp(1), dp(1), dp(1)) })
+  indicators.addView(sleepButton, LinearLayout.LayoutParams(0, dp(42), 1f).apply { setMargins(dp(1), dp(1), dp(1), dp(1)) })
   root.addView(indicators)
   val measurements = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-  measurements.addView(button("BIA") { showMeasurement("BIA") }, LinearLayout.LayoutParams(0, dp(42), 1f).apply { setMargins(dp(4), dp(4), dp(4), dp(4)) })
-  measurements.addView(button("ЭКГ") { showMeasurement("ECG") }, LinearLayout.LayoutParams(0, dp(42), 1f).apply { setMargins(dp(4), dp(4), dp(4), dp(4)) })
+  measurements.addView(button("BIA") { showMeasurement("BIA") }, LinearLayout.LayoutParams(0, dp(42), 1f).apply { setMargins(dp(1), dp(1), dp(1), dp(1)) })
+  measurements.addView(button("ЭКГ") { showMeasurement("ECG") }, LinearLayout.LayoutParams(0, dp(42), 1f).apply { setMargins(dp(1), dp(1), dp(1), dp(1)) })
   root.addView(measurements)
-  root.addView(button("Настройки") { showSettings() }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(42)).apply { setMargins(dp(4), dp(4), dp(4), dp(4)) })
+  root.addView(button("Настройки") { showSettings() }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(42)).apply { setMargins(dp(1), dp(1), dp(1), dp(1)) })
   showPage(root)
  }
  private fun startHomeOxygen() {
