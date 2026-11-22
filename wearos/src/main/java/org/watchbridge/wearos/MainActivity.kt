@@ -321,13 +321,43 @@ class MainActivity : Activity(), SensorEventListener {
  }
  private fun showSettings() {
   screen = "settings"
-  val root = page()
-  root.addView(label("Настройки", 17f))
-  root.addView(button("Настройки приложения") { showAppSettings() })
-  root.addView(button("Параметры тела") { showBodySettings() })
-  root.addView(button("MQTT / Home Assistant") { showMqttSettings() })
-  root.addView(button("Bluetooth") { showBluetoothSettings() })
-  root.addView(button("Назад") { showHome() })
+  val root = page().apply { setPadding(dp(10), dp(2), dp(10), dp(10)) }
+  root.addView(label("Настройки", 13f).apply {
+   typeface = Typeface.DEFAULT_BOLD
+   setPadding(dp(2), 0, dp(2), dp(2))
+  })
+  fun settingsButton(title: String, action: () -> Unit) {
+   root.addView(button(title, action), LinearLayout.LayoutParams(
+    LinearLayout.LayoutParams.MATCH_PARENT, dp(42)
+   ).apply { setMargins(1, 1, 1, 1) })
+  }
+  settingsButton("Настройки приложения") { showAppSettings() }
+  settingsButton("Параметры тела") { showBodySettings() }
+  settingsButton("MQTT / Home Assistant") { showMqttSettings() }
+  settingsButton("Bluetooth") { showBluetoothSettings() }
+  settingsButton("О приложении") { showAbout() }
+  settingsButton("Назад") { showHome() }
+  showPage(root)
+ }
+ private fun showAbout() {
+  screen = "about"
+  val root = page().apply { setPadding(dp(10), dp(2), dp(10), dp(10)) }
+  root.addView(label("О приложении", 13f).apply {
+   typeface = Typeface.DEFAULT_BOLD
+   setPadding(dp(2), 0, dp(2), dp(2))
+  })
+  val version = try {
+   val info = packageManager.getPackageInfo(packageName, 0)
+   info.versionName ?: "—"
+  } catch (_: Exception) { "—" }
+  root.addView(label("Watch Bridge", 16f).apply { typeface = Typeface.DEFAULT_BOLD })
+  root.addView(label("Версия: $version", 12f))
+  root.addView(label("Приложение для умных часов Wear OS", 12f))
+  root.addView(label("Измерения и история показателей здоровья. Передача данных в Home Assistant через Bluetooth LE или MQTT.", 11f))
+  root.addView(label("Разработчик: Kusheev Sergei", 11f))
+  root.addView(button("Назад") { showSettings() }, LinearLayout.LayoutParams(
+   LinearLayout.LayoutParams.MATCH_PARENT, dp(42)
+  ).apply { setMargins(1, 1, 1, 1) })
   showPage(root)
  }
  private fun showAppSettings() {
