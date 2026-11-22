@@ -1396,6 +1396,7 @@ class MainActivity : Activity(), SensorEventListener {
   } else {
    intent.action = WatchSyncService.ACTION_STOP
    startService(intent)
+   if (prefs.getBoolean("ble_enabled", false)) startBle()
   }
   if (::manager.isInitialized) startSensors()
  }
