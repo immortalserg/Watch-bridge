@@ -485,6 +485,7 @@ class MainActivity : Activity(), SensorEventListener {
   }
   historyToggle("Отправка всей истории", "history_send_button_enabled")
   historyToggle("Удаление записей", "history_delete_button_enabled")
+  historyToggle("Автосбор пульса (при открытом приложении)", "auto_heart_collection")
   root.addView(button("По умолчанию: 40 / 32 dp") {
    prefs.edit().putInt("home_button_height_dp", 40)
     .putInt("menu_button_height_dp", 32).apply()
@@ -502,6 +503,9 @@ class MainActivity : Activity(), SensorEventListener {
   val root = page()
   root.addView(label("MQTT / Home Assistant", 15f))
   root.addView(label("Отправка измерений в Home Assistant через MQTT", 11f))
+  root.addView(label("В очереди: ${mqtt?.pendingCount() ?: 0} записей", 11f))
+  val delivered = mqtt?.lastDelivered() ?: 0L
+  root.addView(label("Последняя отправка брокеру: " + if (delivered > 0) SimpleDateFormat("dd.MM HH:mm:ss", Locale.getDefault()).format(Date(delivered)) else "нет в этом сеансе", 11f))
   fun field(title: String, key: String, fallback: String = "", password: Boolean = false): EditText {
    root.addView(label(title, 11f))
    val input = EditText(this).apply {
@@ -552,6 +556,7 @@ class MainActivity : Activity(), SensorEventListener {
    return true
   }
   root.addView(button("Сохранить") { save() })
+  root.addView(button("Повторить отправку очереди") { mqtt?.retryPending(); showMqttSettings() })
   root.addView(button("Проверить MQTT") {
    if (save()) {
     if (enabled) {
@@ -1746,10 +1751,10 @@ class MainActivity : Activity(), SensorEventListener {
     val bpm = event.values[0]
     if (bpm.isFinite() && bpm in 25f..240f) {
      heart = bpm
-     if (pulseAnimating && screen == "home") {
+     if ((pulseAnimating && screen == "home") || prefs.getBoolean("auto_heart_collection", false)) {
       prefs.edit().putString("last_heart", "${bpm.toInt()} уд/мин").apply()
       saveVital("heart", bpm.toInt())
-      renderHeartButton()
+      if (screen == "home") renderHeartButton()
      }
     }
    }
