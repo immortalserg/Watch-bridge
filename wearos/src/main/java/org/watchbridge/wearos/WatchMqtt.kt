@@ -34,12 +34,19 @@ class WatchMqtt(private val context: Context, private val report: (String) -> Un
    queue.execute { send(kind, payload) }
    return
   }
-  synchronized(this) {
+  synchronized(storageLock) {
    val items = try { JSONArray(prefs.getString(pendingKey, "[]")) } catch (_: Exception) { JSONArray() }
    val id = try { JSONObject(payload).optString("id") } catch (_: Exception) { "" }
    if (id.isNotBlank()) for (i in 0 until items.length()) {
     val old = items.optJSONObject(i) ?: continue
-    if (old.optString("id") == id && old.optString("kind") == kind) return
+    if (old.optString("id") == id && old.optString("kind") == kind) {
+     if (kind == "steps") {
+      old.put("payload", payload)
+      old.put("send_to_ha", prefs.getBoolean("ha_mqtt_enabled", true))
+      prefs.edit().putString(pendingKey, items.toString()).commit()
+     }
+     return
+    }
    }
    val record = JSONObject().put("kind", kind).put("payload", payload).put("id", id)
     .put("send_to_ha", prefs.getBoolean("ha_mqtt_enabled", true))
@@ -54,11 +61,11 @@ class WatchMqtt(private val context: Context, private val report: (String) -> Un
  private fun drain() = synchronized(drainLock) {
   if (!prefs.getBoolean("mqtt_enabled", false)) return@synchronized
   while (true) {
-   val next = synchronized(this) {
+   val next = synchronized(storageLock) {
     try { JSONArray(prefs.getString(pendingKey, "[]")).optJSONObject(0) } catch (_: Exception) { null }
    } ?: return@synchronized
-   if (!send(next.optString("kind"), next.optString("payload"), next.optBoolean("send_to_ha", true))) return
-   synchronized(this) {
+   if (!send(next.optString("kind"), next.optString("payload"), next.optBoolean("send_to_ha", true))) return@synchronized
+   synchronized(storageLock) {
     val items = try { JSONArray(prefs.getString(pendingKey, "[]")) } catch (_: Exception) { JSONArray() }
     val updated = JSONArray()
     for (i in 1 until items.length()) updated.put(items.get(i))
