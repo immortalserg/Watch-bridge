@@ -14,6 +14,7 @@ _LOGGER = logging.getLogger(__name__)
 SERVICE_UUID = "f3e9b8c0-4471-4a42-a14b-6f2f7a91c001"
 JOURNAL_UUID = "f3e9b8c0-4471-4a42-a14b-6f2f7a91c003"
 IDENTITY_UUID = "f3e9b8c0-4471-4a42-a14b-6f2f7a91c004"
+HISTORY_UUID = "f3e9b8c0-4471-4a42-a14b-6f2f7a91c005"
 KINDS = frozenset(("heart", "oxygen", "steps", "bia", "ecg", "ecg_beats"))
 
 
@@ -35,7 +36,7 @@ class WearOsBleReceiver:
         if isinstance(seen, (int, float)) and time.monotonic() - seen > 15:
             return
         # BLE addresses may rotate; verify identity after connecting.
-        if time.monotonic() - self.last_attempt < 30:
+        if time.monotonic() - self.last_attempt < 120:
             return
         self.last_attempt = time.monotonic()
         self.task = self.hass.async_create_task(self._read_latest(service_info.address))
@@ -58,6 +59,7 @@ class WearOsBleReceiver:
             if identity != self.device_id:
                 _LOGGER.debug("Wear OS BLE identity mismatch for %s", address)
                 return
+            await self._read_history(client)
             raw = bytes(await asyncio.wait_for(
                 client.read_gatt_char(JOURNAL_UUID), timeout=10
             ))
@@ -91,6 +93,43 @@ class WearOsBleReceiver:
                     await asyncio.wait_for(client.disconnect(), timeout=10)
                 except Exception:
                     pass
+
+    async def _read_history(self, client):
+        """Read bounded historical records; journal IDs deduplicate MQTT and BLE."""
+        deadline = time.monotonic() + 65
+        for kind in ("heart", "oxygen", "steps", "bia", "ecg"):
+            for index in range(50):
+                if time.monotonic() >= deadline:
+                    return
+                await asyncio.wait_for(
+                    client.write_gatt_char(
+                        HISTORY_UUID, f"{kind}:{index}".encode("ascii"), response=True
+                    ), timeout=10
+                )
+                raw = bytes(await asyncio.wait_for(
+                    client.read_gatt_char(HISTORY_UUID), timeout=10
+                ))
+                if len(raw) > 4096:
+                    raise ValueError("BLE history record exceeds maximum length")
+                record = json.loads(raw.decode("utf-8"))
+                if not isinstance(record, dict):
+                    raise ValueError("Invalid BLE history response")
+                if record.get("done") is True:
+                    break
+                record_id = record.get("id")
+                measured_at = record.get("measured_at")
+                if (record.get("kind") != kind or not isinstance(record_id, str)
+                        or not 0 < len(record_id) <= 200
+                        or not isinstance(measured_at, str)
+                        or not 0 < len(measured_at) <= 64):
+                    raise ValueError("Invalid BLE history record")
+                inserted = await self.hass.async_add_executor_job(
+                    self.journal.insert, self.device_id, kind,
+                    record_id, measured_at, record
+                )
+                if inserted:
+                    self.on_record(kind, record)
+            _LOGGER.debug("Wear OS BLE history scan finished: %s", kind)
 
     def close(self):
         if self.task is not None and not self.task.done():
