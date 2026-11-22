@@ -17,6 +17,7 @@ class WatchMqtt(private val context: Context, private val report: (String) -> Un
  private val maxPending = 500
  @Volatile private var lastDeliveredAt = 0L
  init { queue.scheduleWithFixedDelay({ try { drain() } catch (e: Exception) { Log.w("WatchBridgeMQTT", "Retry failed", e) } }, 15, 30, TimeUnit.SECONDS) }
+ fun retryPending() { queue.execute { drain() } }
  fun pendingCount(): Int = synchronized(this) { try { JSONArray(prefs.getString(pendingKey, "[]")).length() } catch (_: Exception) { 0 } }
  fun lastDelivered(): Long = lastDeliveredAt
  private var client: MqttClient? = null
