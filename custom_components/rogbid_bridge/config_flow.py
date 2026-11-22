@@ -43,7 +43,9 @@ class RogbidBridgeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_user(self, user_input=None):
         errors = {}
         if user_input is not None:
-            device_id = (user_input.get(CONF_DEVICE_ID) or "").strip()
+            manual_id = (user_input.get("manual_device_id") or "").strip()
+            selected_id = (user_input.get(CONF_DEVICE_ID) or "").strip()
+            device_id = manual_id or selected_id
             if not re.fullmatch(r"[A-Za-z0-9_-]+", device_id):
                 errors["base"] = "invalid_device_id"
             else:
@@ -57,10 +59,11 @@ class RogbidBridgeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         watches = await self._discover_watches()
         if watches:
             schema = vol.Schema({
-                vol.Required(CONF_DEVICE_ID): vol.In({
+                vol.Optional(CONF_DEVICE_ID): vol.In({
                     device_id: f"{'Wear OS' if device_id.startswith('wearos_') else 'Rogbid Z10'} · {device_id[-8:]}"
                     for device_id in watches
-                })
+                }),
+                vol.Optional("manual_device_id"): str,
             })
         else:
             schema = vol.Schema({vol.Required(CONF_DEVICE_ID): str})
