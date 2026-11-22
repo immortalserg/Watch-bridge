@@ -606,7 +606,8 @@ class MainActivity : Activity(), SensorEventListener {
   root.addView(label(bleInfo, 11f))
   root.addView(button("Сохранить") {
    prefs.edit().putBoolean("ble_enabled", enabled).apply()
-   if (enabled) startBle() else { bleServer?.stop(); bleServer = null }
+   if (prefs.getBoolean("background_sync_enabled", false)) updateBackgroundService()
+   else if (enabled) startBle() else { bleServer?.stop(); bleServer = null }
    showBluetoothSettings()
   })
   root.addView(button("Назад") { showSettings() })
@@ -1376,7 +1377,7 @@ class MainActivity : Activity(), SensorEventListener {
   }
   manager = getSystemService(SENSOR_SERVICE) as SensorManager
   mqtt = WatchMqtt(this) { msg -> runOnUiThread { mqttInfo = msg; refresh() } }
-  if (prefs.getBoolean("ble_enabled", false)) startBle()
+  if (prefs.getBoolean("ble_enabled", false) && !prefs.getBoolean("background_sync_enabled", false)) startBle()
   if (prefs.getBoolean("background_sync_enabled", false)) updateBackgroundService()
   showHome()
   requestMissingPermissions()
@@ -1386,6 +1387,7 @@ class MainActivity : Activity(), SensorEventListener {
  private fun updateBackgroundService() {
   val intent = Intent(this, WatchSyncService::class.java)
   if (prefs.getBoolean("background_sync_enabled", false)) {
+   bleServer?.stop(); bleServer = null
    intent.action = WatchSyncService.ACTION_START
    try { androidxStartForegroundService(intent) } catch (e: Exception) {
     android.util.Log.w("WatchBridgeSync", "Cannot start foreground service", e)
@@ -1410,6 +1412,11 @@ class MainActivity : Activity(), SensorEventListener {
     refresh()
     return
    }
+  }
+  if (prefs.getBoolean("background_sync_enabled", false)) {
+   bleInfo = "BLE управляется фоновым сервисом"
+   updateBackgroundService()
+   return
   }
   if (bleServer == null) bleServer = WatchBleServer(this) { msg ->
    runOnUiThread { bleInfo = msg; refresh() }
