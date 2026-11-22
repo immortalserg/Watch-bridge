@@ -8,6 +8,7 @@ import logging
 import time
 
 from bleak import BleakClient
+from bleak_retry_connector import establish_connection
 from homeassistant.components import bluetooth
 
 _LOGGER = logging.getLogger(__name__)
@@ -48,9 +49,14 @@ class WearOsBleReceiver:
                 self.hass, address, connectable=True
             )
             if device is None:
+                _LOGGER.debug("Wear OS BLE no connectable device for %s", address)
                 return
-            client = BleakClient(device, timeout=15.0)
-            await asyncio.wait_for(client.connect(), timeout=20)
+            _LOGGER.debug("Wear OS BLE connecting to %s", address)
+            client = await asyncio.wait_for(
+                establish_connection(BleakClient, device, self.device_id, max_attempts=3),
+                timeout=45,
+            )
+            _LOGGER.debug("Wear OS BLE connected to %s", address)
             if client.services.get_service(SERVICE_UUID) is None:
                 return
             identity = bytes(await asyncio.wait_for(
