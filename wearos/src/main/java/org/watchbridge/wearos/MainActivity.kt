@@ -1790,6 +1790,6 @@ class MainActivity : Activity(), SensorEventListener {
  }
  override fun onResume() {
   super.onResume()
-  if (::manager.isInitialized && ::output.isInitialized) startSensors()
+  if (::manager.isInitialized) startSensors()
  }
 }
