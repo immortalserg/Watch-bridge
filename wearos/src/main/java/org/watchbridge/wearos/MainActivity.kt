@@ -87,7 +87,8 @@ class MainActivity : Activity(), SensorEventListener {
   "sky" -> Skin(0xffe8f6ff.toInt(), 0xff1e3c5b.toInt(), 0xff2473b8.toInt(), 0xffc4e3f7.toInt())
   else -> Skin(0xff11151f.toInt(), Color.WHITE, 0xff69bbff.toInt(), 0xff2a3345.toInt())
  }
- private fun buttonHeightDp(): Int = prefs.getInt("button_height_dp", 52).coerceIn(30, 80)
+ private fun homeButtonHeightDp(): Int = prefs.getInt("home_button_height_dp", 40).coerceIn(30, 80)
+ private fun menuButtonHeightDp(): Int = prefs.getInt("menu_button_height_dp", 32).coerceIn(30, 80)
  private fun dp(n: Int) = (n * resources.displayMetrics.density).toInt()
  private fun page(): LinearLayout = LinearLayout(this).apply {
   orientation = LinearLayout.VERTICAL
@@ -104,7 +105,7 @@ class MainActivity : Activity(), SensorEventListener {
  }
  private fun button(title: String, action: () -> Unit): Button = Button(this).apply {
   text = title; isAllCaps = false; textSize = 11f; setTextColor(skin().fg)
-  minHeight = dp(buttonHeightDp()); minimumHeight = dp(buttonHeightDp()); minWidth = 0; minimumWidth = 0
+  minHeight = dp(menuButtonHeightDp()); minimumHeight = dp(menuButtonHeightDp()); minWidth = 0; minimumWidth = 0
   setPadding(dp(8), dp(5), dp(8), dp(5))
   background = GradientDrawable().apply { setColor(skin().tile); cornerRadius = dp(12).toFloat() }
   setOnClickListener { action() }
@@ -229,22 +230,22 @@ class MainActivity : Activity(), SensorEventListener {
   val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
   homePulseButton = button("♥") { homeTap("heart") { startHomeHeart() } }
   homeOxygenButton = button("O₂  " + (prefs.getString("last_oxygen", null) ?: "—")) { homeTap("oxygen") { startHomeOxygen() } }
-  actions.addView(homePulseButton, LinearLayout.LayoutParams(0, dp(buttonHeightDp()), 1f).apply { setMargins(dp(1), dp(1), dp(1), dp(1)) })
-  actions.addView(homeOxygenButton, LinearLayout.LayoutParams(0, dp(buttonHeightDp()), 1f).apply { setMargins(dp(1), dp(1), dp(1), dp(1)) })
+  actions.addView(homePulseButton, LinearLayout.LayoutParams(0, dp(homeButtonHeightDp()), 1f).apply { setMargins(dp(1), dp(1), dp(1), dp(1)) })
+  actions.addView(homeOxygenButton, LinearLayout.LayoutParams(0, dp(homeButtonHeightDp()), 1f).apply { setMargins(dp(1), dp(1), dp(1), dp(1)) })
   root.addView(actions)
   renderHeartButton()
   val indicators = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
   val stepsButton = button("♟  " + (todaySteps()?.toString() ?: "—")) { showJournal("steps") }
   val sleepButton = button("☾  —") { showJournal("sleep") }
   stepsValue = stepsButton
-  indicators.addView(stepsButton, LinearLayout.LayoutParams(0, dp(buttonHeightDp()), 1f).apply { setMargins(dp(1), dp(1), dp(1), dp(1)) })
-  indicators.addView(sleepButton, LinearLayout.LayoutParams(0, dp(buttonHeightDp()), 1f).apply { setMargins(dp(1), dp(1), dp(1), dp(1)) })
+  indicators.addView(stepsButton, LinearLayout.LayoutParams(0, dp(homeButtonHeightDp()), 1f).apply { setMargins(dp(1), dp(1), dp(1), dp(1)) })
+  indicators.addView(sleepButton, LinearLayout.LayoutParams(0, dp(homeButtonHeightDp()), 1f).apply { setMargins(dp(1), dp(1), dp(1), dp(1)) })
   root.addView(indicators)
   val measurements = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-  measurements.addView(button("BIA") { showMeasurement("BIA") }, LinearLayout.LayoutParams(0, dp(buttonHeightDp()), 1f).apply { setMargins(dp(1), dp(1), dp(1), dp(1)) })
-  measurements.addView(button("ЭКГ") { showMeasurement("ECG") }, LinearLayout.LayoutParams(0, dp(buttonHeightDp()), 1f).apply { setMargins(dp(1), dp(1), dp(1), dp(1)) })
+  measurements.addView(button("BIA") { showMeasurement("BIA") }, LinearLayout.LayoutParams(0, dp(homeButtonHeightDp()), 1f).apply { setMargins(dp(1), dp(1), dp(1), dp(1)) })
+  measurements.addView(button("ЭКГ") { showMeasurement("ECG") }, LinearLayout.LayoutParams(0, dp(homeButtonHeightDp()), 1f).apply { setMargins(dp(1), dp(1), dp(1), dp(1)) })
   root.addView(measurements)
-  root.addView(button("Настройки") { showSettings() }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(buttonHeightDp())).apply { setMargins(dp(1), dp(1), dp(1), dp(1)) })
+  root.addView(button("Настройки") { showSettings() }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(menuButtonHeightDp())).apply { setMargins(dp(1), dp(1), dp(1), dp(1)) })
   showPage(root)
  }
  private fun startHomeOxygen() {
@@ -330,7 +331,7 @@ class MainActivity : Activity(), SensorEventListener {
   })
   fun settingsButton(title: String, action: () -> Unit) {
    root.addView(button(title, action), LinearLayout.LayoutParams(
-    LinearLayout.LayoutParams.MATCH_PARENT, dp(buttonHeightDp())
+    LinearLayout.LayoutParams.MATCH_PARENT, dp(menuButtonHeightDp())
    ).apply { setMargins(dp(1), dp(1), dp(1), dp(1)) })
   }
   settingsButton("Настройки приложения") { showAppSettings() }
@@ -358,15 +359,20 @@ class MainActivity : Activity(), SensorEventListener {
   root.addView(label("Измерения и история показателей здоровья. Передача данных в Home Assistant через Bluetooth LE или MQTT.", 11f))
   root.addView(label("Разработчик: Kusheev Sergei", 11f))
   root.addView(button("Назад") { showSettings() }, LinearLayout.LayoutParams(
-   LinearLayout.LayoutParams.MATCH_PARENT, dp(buttonHeightDp())
+   LinearLayout.LayoutParams.MATCH_PARENT, dp(menuButtonHeightDp())
   ).apply { setMargins(dp(1), dp(1), dp(1), dp(1)) })
   showPage(root)
  }
  private fun showAppSettings() {
   screen = "app_settings"
-  val root = page()
-  root.addView(label("Настройки приложения", 16f))
-  root.addView(label("Тема оформления", 13f))
+  val root = page().apply { setPadding(dp(10), dp(2), dp(10), dp(10)) }
+  root.addView(label("Настройки приложения", 13f).apply {
+   typeface = Typeface.DEFAULT_BOLD
+   setPadding(dp(2), 0, dp(2), 3)
+  })
+  root.addView(label("Тема оформления", 11f).apply {
+   setPadding(dp(2), 0, dp(2), 3)
+  })
   val themeKeys = listOf("dark", "light", "forest", "sunset", "pink", "lavender", "mint", "cream", "sky")
   val themeNames = themeKeys.map { themeTitle(it) }
   val selector = Spinner(this).apply {
@@ -403,37 +409,63 @@ class MainActivity : Activity(), SensorEventListener {
     }
    }
   }
-  root.addView(selector, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(48)).apply {
-   setMargins(dp(5), dp(4), dp(5), dp(8))
+  root.addView(selector, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(38)).apply {
+   setMargins(dp(1), 0, dp(1), 3)
   })
-  root.addView(label("Высота кнопок", 13f))
-  val heightValue = label("${buttonHeightDp()} dp", 12f)
-  root.addView(heightValue)
-  val heightSlider = SeekBar(this).apply {
-   max = 50 // 30–80 dp
-   progress = buttonHeightDp() - 30
-   progressTintList = android.content.res.ColorStateList.valueOf(skin().accent)
-   thumbTintList = android.content.res.ColorStateList.valueOf(skin().accent)
-   setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-    override fun onProgressChanged(seekBar: SeekBar?, value: Int, fromUser: Boolean) {
-     heightValue.text = "${value + 30} dp"
-    }
-    override fun onStartTrackingTouch(seekBar: SeekBar?) {}
-    override fun onStopTrackingTouch(seekBar: SeekBar?) {
-     val selected = (progress + 30).coerceIn(30, 80)
-     prefs.edit().putInt("button_height_dp", selected).apply()
-     showAppSettings()
-    }
-   })
+  fun heightControl(title: String, key: String, defaultHeight: Int) {
+   val current = prefs.getInt(key, defaultHeight).coerceIn(30, 80)
+   val line = LinearLayout(this).apply {
+    orientation = LinearLayout.HORIZONTAL
+    gravity = Gravity.CENTER_VERTICAL
+   }
+   val name = label(title, 11f).apply {
+    gravity = Gravity.CENTER_VERTICAL or Gravity.START
+    setPadding(dp(2), 0, 0, 0)
+    isSingleLine = true
+   }
+   val value = label("$current dp", 11f).apply {
+    gravity = Gravity.CENTER_VERTICAL or Gravity.END
+    setPadding(0, 0, dp(2), 0)
+    isSingleLine = true
+   }
+   line.addView(name, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+   line.addView(value)
+   root.addView(line, LinearLayout.LayoutParams(
+    LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+   ).apply { bottomMargin = 3 })
+   val slider = SeekBar(this).apply {
+    max = 50
+    progress = current - 30
+    progressTintList = android.content.res.ColorStateList.valueOf(skin().accent)
+    thumbTintList = android.content.res.ColorStateList.valueOf(skin().accent)
+    setPadding(dp(4), 0, dp(4), 0)
+    setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+     override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+      value.text = "${progress + 30} dp"
+     }
+     override fun onStartTrackingTouch(seekBar: SeekBar?) {}
+     override fun onStopTrackingTouch(seekBar: SeekBar?) {
+      prefs.edit().putInt(key, (progress + 30).coerceIn(30, 80)).apply()
+      showAppSettings()
+     }
+    })
+   }
+   root.addView(slider, LinearLayout.LayoutParams(
+    LinearLayout.LayoutParams.MATCH_PARENT, dp(30)
+   ).apply { bottomMargin = 3 })
   }
-  root.addView(heightSlider, LinearLayout.LayoutParams(
-   LinearLayout.LayoutParams.MATCH_PARENT, dp(42)
-  ))
-  root.addView(button("По умолчанию: 52 dp") {
-   prefs.edit().putInt("button_height_dp", 52).apply()
+  heightControl("Главный экран", "home_button_height_dp", 40)
+  heightControl("Кнопки меню", "menu_button_height_dp", 32)
+  root.addView(button("По умолчанию: 40 / 32 dp") {
+   prefs.edit().putInt("home_button_height_dp", 40)
+    .putInt("menu_button_height_dp", 32).apply()
    showAppSettings()
-  })
-  root.addView(button("Назад") { showSettings() })
+  }, LinearLayout.LayoutParams(
+   LinearLayout.LayoutParams.MATCH_PARENT, dp(menuButtonHeightDp())
+  ).apply { bottomMargin = 3 })
+  root.addView(button("Назад") { showSettings() }, LinearLayout.LayoutParams(
+   LinearLayout.LayoutParams.MATCH_PARENT, dp(menuButtonHeightDp())
+  ))
   showPage(root)
  }
  private fun showMqttSettings() {
@@ -703,12 +735,12 @@ class MainActivity : Activity(), SensorEventListener {
    else if (tracker == "SPO2") startSpO2Measurement()
    else startSamsungTrackerTest(tracker)
    updateMeasurementUi()
-  }, LinearLayout.LayoutParams(0, dp(buttonHeightDp()), 1f).apply { setMargins(dp(3), dp(2), dp(3), dp(2)) })
+  }, LinearLayout.LayoutParams(0, dp(menuButtonHeightDp()), 1f).apply { setMargins(dp(3), dp(2), dp(3), dp(2)) })
   if (tracker == "BIA" || tracker == "ECG") {
    actions.addView(button("История") {
     if (tracker == "ECG") { if (ecgRecording) finishEcgRecording() else stopSamsungTrackerTest(); showEcgHistory() }
     else { stopSamsungTrackerTest(); showBiaHistory() }
-   }, LinearLayout.LayoutParams(0, dp(buttonHeightDp()), 1f).apply { setMargins(dp(3), dp(2), dp(3), dp(2)) })
+   }, LinearLayout.LayoutParams(0, dp(menuButtonHeightDp()), 1f).apply { setMargins(dp(3), dp(2), dp(3), dp(2)) })
   }
   root.addView(actions)
   root.addView(button("Назад") {
@@ -999,11 +1031,11 @@ class MainActivity : Activity(), SensorEventListener {
   }
   val nav = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
   nav.addView(button("◀ 3 с") { startSample = (startSample - 1500).coerceAtLeast(0); redraw() },
-   LinearLayout.LayoutParams(0, dp(buttonHeightDp()), 1f))
+   LinearLayout.LayoutParams(0, dp(menuButtonHeightDp()), 1f))
   nav.addView(button("3 с ▶") {
    startSample = (startSample + 1500).coerceAtMost(((values.size - 1) / 1500 * 1500).coerceAtLeast(0))
    redraw()
-  }, LinearLayout.LayoutParams(0, dp(buttonHeightDp()), 1f))
+  }, LinearLayout.LayoutParams(0, dp(menuButtonHeightDp()), 1f))
   root.addView(nav)
   root.addView(button("Фильтр: вкл/выкл") { filtered = !filtered; redraw() })
   val exportStatus = label("", 11f)
