@@ -15,6 +15,7 @@ import android.os.OutcomeReceiver
 import java.time.Instant
 import java.time.temporal.ChronoUnit
 import android.app.Activity
+import android.app.AlertDialog
 import android.app.DatePickerDialog
 import java.time.LocalDate
 import java.time.Period
@@ -49,6 +50,7 @@ import android.widget.AdapterView
 import android.widget.ArrayAdapter
 import android.widget.Spinner
 import android.widget.Button
+import android.widget.SeekBar
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -86,6 +88,8 @@ class MainActivity : Activity(), SensorEventListener {
   "sky" -> Skin(0xffe8f6ff.toInt(), 0xff1e3c5b.toInt(), 0xff2473b8.toInt(), 0xffc4e3f7.toInt())
   else -> Skin(0xff11151f.toInt(), Color.WHITE, 0xff69bbff.toInt(), 0xff2a3345.toInt())
  }
+ private fun homeButtonHeightDp(): Int = prefs.getInt("home_button_height_dp", 40).coerceIn(30, 80)
+ private fun menuButtonHeightDp(): Int = prefs.getInt("menu_button_height_dp", 32).coerceIn(30, 80)
  private fun dp(n: Int) = (n * resources.displayMetrics.density).toInt()
  private fun page(): LinearLayout = LinearLayout(this).apply {
   orientation = LinearLayout.VERTICAL
@@ -94,15 +98,23 @@ class MainActivity : Activity(), SensorEventListener {
   setBackgroundColor(skin().bg)
  }
  private fun showPage(root: LinearLayout) {
+  if (screen != "home") {
+   // Exact 3 physical pixels between adjacent menu items (buttons, text and fields).
+   root.dividerDrawable = GradientDrawable().apply {
+    setColor(Color.TRANSPARENT)
+    setSize(1, 3)
+   }
+   root.showDividers = LinearLayout.SHOW_DIVIDER_MIDDLE
+  }
   setContentView(ScrollView(this).apply { setBackgroundColor(skin().bg); addView(root) })
  }
  private fun label(value: String, size: Float = 15f): TextView = TextView(this).apply {
   text = value; textSize = size; setTextColor(skin().fg)
-  gravity = Gravity.CENTER; setPadding(dp(3), dp(6), dp(3), dp(6))
+  gravity = Gravity.CENTER; setPadding(dp(3), if (screen == "home") dp(6) else 0, dp(3), if (screen == "home") dp(6) else 0)
  }
  private fun button(title: String, action: () -> Unit): Button = Button(this).apply {
   text = title; isAllCaps = false; textSize = 11f; setTextColor(skin().fg)
-  minHeight = dp(34); minimumHeight = dp(34); minWidth = 0; minimumWidth = 0
+  minHeight = dp(menuButtonHeightDp()); minimumHeight = dp(menuButtonHeightDp()); minWidth = 0; minimumWidth = 0
   setPadding(dp(8), dp(5), dp(8), dp(5))
   background = GradientDrawable().apply { setColor(skin().tile); cornerRadius = dp(12).toFloat() }
   setOnClickListener { action() }
@@ -227,22 +239,22 @@ class MainActivity : Activity(), SensorEventListener {
   val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
   homePulseButton = button("♥") { homeTap("heart") { startHomeHeart() } }
   homeOxygenButton = button("O₂  " + (prefs.getString("last_oxygen", null) ?: "—")) { homeTap("oxygen") { startHomeOxygen() } }
-  actions.addView(homePulseButton, LinearLayout.LayoutParams(0, dp(42), 1f).apply { setMargins(dp(4), dp(4), dp(4), dp(4)) })
-  actions.addView(homeOxygenButton, LinearLayout.LayoutParams(0, dp(42), 1f).apply { setMargins(dp(4), dp(4), dp(4), dp(4)) })
+  actions.addView(homePulseButton, LinearLayout.LayoutParams(0, dp(homeButtonHeightDp()), 1f).apply { setMargins(dp(1), dp(1), dp(1), dp(1)) })
+  actions.addView(homeOxygenButton, LinearLayout.LayoutParams(0, dp(homeButtonHeightDp()), 1f).apply { setMargins(dp(1), dp(1), dp(1), dp(1)) })
   root.addView(actions)
   renderHeartButton()
   val indicators = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
   val stepsButton = button("♟  " + (todaySteps()?.toString() ?: "—")) { showJournal("steps") }
   val sleepButton = button("☾  —") { showJournal("sleep") }
   stepsValue = stepsButton
-  indicators.addView(stepsButton, LinearLayout.LayoutParams(0, dp(42), 1f).apply { setMargins(dp(4), dp(4), dp(4), dp(4)) })
-  indicators.addView(sleepButton, LinearLayout.LayoutParams(0, dp(42), 1f).apply { setMargins(dp(4), dp(4), dp(4), dp(4)) })
+  indicators.addView(stepsButton, LinearLayout.LayoutParams(0, dp(homeButtonHeightDp()), 1f).apply { setMargins(dp(1), dp(1), dp(1), dp(1)) })
+  indicators.addView(sleepButton, LinearLayout.LayoutParams(0, dp(homeButtonHeightDp()), 1f).apply { setMargins(dp(1), dp(1), dp(1), dp(1)) })
   root.addView(indicators)
   val measurements = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-  measurements.addView(button("BIA") { showMeasurement("BIA") }, LinearLayout.LayoutParams(0, dp(42), 1f).apply { setMargins(dp(4), dp(4), dp(4), dp(4)) })
-  measurements.addView(button("ЭКГ") { showMeasurement("ECG") }, LinearLayout.LayoutParams(0, dp(42), 1f).apply { setMargins(dp(4), dp(4), dp(4), dp(4)) })
+  measurements.addView(button("BIA") { showMeasurement("BIA") }, LinearLayout.LayoutParams(0, dp(homeButtonHeightDp()), 1f).apply { setMargins(dp(1), dp(1), dp(1), dp(1)) })
+  measurements.addView(button("ЭКГ") { showMeasurement("ECG") }, LinearLayout.LayoutParams(0, dp(homeButtonHeightDp()), 1f).apply { setMargins(dp(1), dp(1), dp(1), dp(1)) })
   root.addView(measurements)
-  root.addView(button("Настройки") { showSettings() }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(42)).apply { setMargins(dp(4), dp(4), dp(4), dp(4)) })
+  root.addView(button("Настройки") { showSettings() }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(menuButtonHeightDp())).apply { setMargins(dp(1), dp(1), dp(1), dp(1)) })
   showPage(root)
  }
  private fun startHomeOxygen() {
@@ -303,7 +315,10 @@ class MainActivity : Activity(), SensorEventListener {
    for (i in 0 until history.length()) {
     val entry = history.optJSONObject(i) ?: continue
     val date = SimpleDateFormat("dd.MM HH:mm", Locale.getDefault()).format(Date(entry.optLong("time")))
-    root.addView(label("$date   ${entry.optInt("value")} " + (if (kind == "heart") "уд/мин" else "%"), 12f))
+    val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+    row.addView(label("$date   ${entry.optInt("value")} " + (if (kind == "heart") "уд/мин" else "%"), 12f),
+     LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+    root.addView(row)
    }
   } else if (kind == "steps") {
    root.addView(button("Отправить шаги по MQTT") { publishCurrentSteps(); showJournal("steps") })
@@ -313,7 +328,10 @@ class MainActivity : Activity(), SensorEventListener {
    if (days.isEmpty()) root.addView(label("Данных пока нет", 12f))
    days.forEach { day ->
     val entry = history.optJSONObject(day) ?: return@forEach
-    root.addView(label("$day   ${entry.optInt("steps")} шагов", 12f))
+    val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+    row.addView(label("$day   ${entry.optInt("steps")} шагов", 12f),
+     LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+    root.addView(row)
    }
    root.addView(label("Учёт начинается с первого запуска. Для точного суточного итога нужна синхронизация с системной историей шагов.", 10f))
   } else root.addView(label("История пока не подключена", 12f))
@@ -321,20 +339,55 @@ class MainActivity : Activity(), SensorEventListener {
  }
  private fun showSettings() {
   screen = "settings"
-  val root = page()
-  root.addView(label("Настройки", 17f))
-  root.addView(button("Настройки приложения") { showAppSettings() })
-  root.addView(button("Параметры тела") { showBodySettings() })
-  root.addView(button("MQTT / Home Assistant") { showMqttSettings() })
-  root.addView(button("Bluetooth") { showBluetoothSettings() })
-  root.addView(button("Назад") { showHome() })
+  val root = page().apply { setPadding(dp(10), dp(2), dp(10), dp(10)) }
+  root.addView(label("Настройки", 13f).apply {
+   typeface = Typeface.DEFAULT_BOLD
+   setPadding(dp(2), 0, dp(2), 0)
+  })
+  fun settingsButton(title: String, action: () -> Unit) {
+   root.addView(button(title, action), LinearLayout.LayoutParams(
+    LinearLayout.LayoutParams.MATCH_PARENT, dp(menuButtonHeightDp())
+   ).apply { setMargins(dp(1), 0, dp(1), 0) })
+  }
+  settingsButton("Настройки приложения") { showAppSettings() }
+  settingsButton("Параметры тела") { showBodySettings() }
+  settingsButton("MQTT / Home Assistant") { showMqttSettings() }
+  settingsButton("Bluetooth") { showBluetoothSettings() }
+  settingsButton("О приложении") { showAbout() }
+  settingsButton("Назад") { showHome() }
+  showPage(root)
+ }
+ private fun showAbout() {
+  screen = "about"
+  val root = page().apply { setPadding(dp(10), dp(2), dp(10), dp(10)) }
+  root.addView(label("О приложении", 13f).apply {
+   typeface = Typeface.DEFAULT_BOLD
+   setPadding(dp(2), 0, dp(2), 0)
+  })
+  val version = try {
+   val info = packageManager.getPackageInfo(packageName, 0)
+   info.versionName ?: "—"
+  } catch (_: Exception) { "—" }
+  root.addView(label("Watch Bridge", 16f).apply { typeface = Typeface.DEFAULT_BOLD })
+  root.addView(label("Версия: $version", 12f))
+  root.addView(label("Приложение для умных часов Wear OS", 12f))
+  root.addView(label("Измерения и история показателей здоровья. Передача данных в Home Assistant через Bluetooth LE или MQTT.", 11f))
+  root.addView(label("Разработчик: Kusheev Sergei", 11f))
+  root.addView(button("Назад") { showSettings() }, LinearLayout.LayoutParams(
+   LinearLayout.LayoutParams.MATCH_PARENT, dp(menuButtonHeightDp())
+  ).apply { setMargins(dp(1), 0, dp(1), 0) })
   showPage(root)
  }
  private fun showAppSettings() {
   screen = "app_settings"
-  val root = page()
-  root.addView(label("Настройки приложения", 16f))
-  root.addView(label("Тема оформления", 13f))
+  val root = page().apply { setPadding(dp(10), dp(2), dp(10), dp(10)) }
+  root.addView(label("Настройки приложения", 13f).apply {
+   typeface = Typeface.DEFAULT_BOLD
+   setPadding(dp(2), 0, dp(2), 0)
+  })
+  root.addView(label("Тема оформления", 11f).apply {
+   setPadding(dp(2), 0, dp(2), 0)
+  })
   val themeKeys = listOf("dark", "light", "forest", "sunset", "pink", "lavender", "mint", "cream", "sky")
   val themeNames = themeKeys.map { themeTitle(it) }
   val selector = Spinner(this).apply {
@@ -371,10 +424,87 @@ class MainActivity : Activity(), SensorEventListener {
     }
    }
   }
-  root.addView(selector, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(48)).apply {
-   setMargins(dp(5), dp(4), dp(5), dp(8))
+  root.addView(selector, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(38)).apply {
+   setMargins(dp(1), 0, dp(1), 0)
   })
-  root.addView(button("Назад") { showSettings() })
+  fun heightControl(title: String, key: String, defaultHeight: Int) {
+   val current = prefs.getInt(key, defaultHeight).coerceIn(30, 80)
+   val line = LinearLayout(this).apply {
+    orientation = LinearLayout.HORIZONTAL
+    gravity = Gravity.CENTER_VERTICAL
+   }
+   val name = label(title, 11f).apply {
+    gravity = Gravity.CENTER_VERTICAL or Gravity.START
+    setPadding(dp(2), 0, 0, 0)
+    isSingleLine = true
+   }
+   val value = label("$current dp", 11f).apply {
+    gravity = Gravity.CENTER_VERTICAL or Gravity.END
+    setPadding(0, 0, dp(2), 0)
+    isSingleLine = true
+   }
+   line.addView(name, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+   line.addView(value)
+   root.addView(line, LinearLayout.LayoutParams(
+    LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+   ).apply { bottomMargin = 0 })
+   val slider = SeekBar(this).apply {
+    max = 50
+    progress = current - 30
+    progressTintList = android.content.res.ColorStateList.valueOf(skin().accent)
+    thumbTintList = android.content.res.ColorStateList.valueOf(skin().accent)
+    setPadding(dp(4), 0, dp(4), 0)
+    setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+     override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+      value.text = "${progress + 30} dp"
+     }
+     override fun onStartTrackingTouch(seekBar: SeekBar?) {}
+     override fun onStopTrackingTouch(seekBar: SeekBar?) {
+      prefs.edit().putInt(key, (progress + 30).coerceIn(30, 80)).apply()
+      showAppSettings()
+     }
+    })
+   }
+   root.addView(slider, LinearLayout.LayoutParams(
+    LinearLayout.LayoutParams.MATCH_PARENT, dp(30)
+   ).apply { bottomMargin = 0 })
+  }
+  heightControl("Главный экран", "home_button_height_dp", 40)
+  heightControl("Кнопки меню", "menu_button_height_dp", 32)
+  fun historyToggle(title: String, key: String) {
+   var enabled = prefs.getBoolean(key, false)
+   lateinit var control: Button
+   control = button("$title: " + if (enabled) "Вкл" else "Выкл") {
+    enabled = !enabled
+    prefs.edit().putBoolean(key, enabled).apply()
+    control.text = "$title: " + if (enabled) "Вкл" else "Выкл"
+   }
+   root.addView(control, LinearLayout.LayoutParams(
+    LinearLayout.LayoutParams.MATCH_PARENT, dp(menuButtonHeightDp())
+   ))
+  }
+  historyToggle("Отправка всей истории", "history_send_button_enabled")
+  historyToggle("Удаление записей", "history_delete_button_enabled")
+  historyToggle("Автосбор пульса", "auto_heart_collection")
+  var backgroundEnabled = prefs.getBoolean("background_sync_enabled", false)
+  lateinit var backgroundToggle: Button
+  backgroundToggle = button("Фоновый сбор и MQTT: " + if (backgroundEnabled) "Вкл" else "Выкл") {
+   backgroundEnabled = !backgroundEnabled
+   prefs.edit().putBoolean("background_sync_enabled", backgroundEnabled).apply()
+   updateBackgroundService()
+   backgroundToggle.text = "Фоновый сбор и MQTT: " + if (backgroundEnabled) "Вкл" else "Выкл"
+  }
+  root.addView(backgroundToggle)
+  root.addView(button("По умолчанию: 40 / 32 dp") {
+   prefs.edit().putInt("home_button_height_dp", 40)
+    .putInt("menu_button_height_dp", 32).apply()
+   showAppSettings()
+  }, LinearLayout.LayoutParams(
+   LinearLayout.LayoutParams.MATCH_PARENT, dp(menuButtonHeightDp())
+  ).apply { bottomMargin = 0 })
+  root.addView(button("Назад") { showSettings() }, LinearLayout.LayoutParams(
+   LinearLayout.LayoutParams.MATCH_PARENT, dp(menuButtonHeightDp())
+  ))
   showPage(root)
  }
  private fun showMqttSettings() {
@@ -382,6 +512,9 @@ class MainActivity : Activity(), SensorEventListener {
   val root = page()
   root.addView(label("MQTT / Home Assistant", 15f))
   root.addView(label("Отправка измерений в Home Assistant через MQTT", 11f))
+  root.addView(label("В очереди: ${mqtt?.pendingCount() ?: 0} записей", 11f))
+  val delivered = mqtt?.lastDelivered() ?: 0L
+  root.addView(label("Последняя отправка брокеру: " + if (delivered > 0) SimpleDateFormat("dd.MM HH:mm:ss", Locale.getDefault()).format(Date(delivered)) else "нет в этом сеансе", 11f))
   fun field(title: String, key: String, fallback: String = "", password: Boolean = false): EditText {
    root.addView(label(title, 11f))
    val input = EditText(this).apply {
@@ -395,12 +528,20 @@ class MainActivity : Activity(), SensorEventListener {
    return input
   }
   var enabled = prefs.getBoolean("mqtt_enabled", false)
+  var haEnabled = prefs.getBoolean("ha_mqtt_enabled", true)
   lateinit var enabledToggle: Button
-  enabledToggle = button("Отправлять в Home Assistant: " + if (enabled) "Да" else "Нет") {
+  enabledToggle = button("Отправлять в MQTT: " + if (enabled) "Да" else "Нет") {
    enabled = !enabled
-   enabledToggle.text = "Отправлять в Home Assistant: " + if (enabled) "Да" else "Нет"
+   enabledToggle.text = "Отправлять в MQTT: " + if (enabled) "Да" else "Нет"
   }
   root.addView(enabledToggle)
+  lateinit var haToggle: Button
+  haToggle = button("Дополнительно в Home Assistant: " + if (haEnabled) "Да" else "Нет") {
+   haEnabled = !haEnabled
+   haToggle.text = "Дополнительно в Home Assistant: " + if (haEnabled) "Да" else "Нет"
+  }
+  root.addView(haToggle)
+  root.addView(label("MQTT: watchbridge/<device>/history; HA: дополнительно rogbid/<device>/history", 10f))
   val host = field("MQTT сервер (IP или DNS)", "mqtt_host")
   val port = field("Порт (TLS: 8883, обычный: 1883)", "mqtt_port", "8883")
   val user = field("Логин", "mqtt_user")
@@ -426,12 +567,14 @@ class MainActivity : Activity(), SensorEventListener {
     .putString("mqtt_user", user.text.toString().trim())
     .putString("mqtt_password", pass.text.toString())
     .putBoolean("mqtt_enabled", enabled)
+    .putBoolean("ha_mqtt_enabled", haEnabled)
     .putBoolean("mqtt_tls", tls).apply()
    mqttInfo = "Настройки сохранены"
    notice.text = mqttInfo
    return true
   }
   root.addView(button("Сохранить") { save() })
+  root.addView(button("Повторить отправку очереди") { mqtt?.retryPending(); showMqttSettings() })
   root.addView(button("Проверить MQTT") {
    if (save()) {
     if (enabled) {
@@ -463,7 +606,8 @@ class MainActivity : Activity(), SensorEventListener {
   root.addView(label(bleInfo, 11f))
   root.addView(button("Сохранить") {
    prefs.edit().putBoolean("ble_enabled", enabled).apply()
-   if (enabled) startBle() else { bleServer?.stop(); bleServer = null }
+   if (prefs.getBoolean("background_sync_enabled", false)) updateBackgroundService()
+   else if (enabled) startBle() else { bleServer?.stop(); bleServer = null }
    showBluetoothSettings()
   })
   root.addView(button("Назад") { showSettings() })
@@ -644,12 +788,12 @@ class MainActivity : Activity(), SensorEventListener {
    else if (tracker == "SPO2") startSpO2Measurement()
    else startSamsungTrackerTest(tracker)
    updateMeasurementUi()
-  }, LinearLayout.LayoutParams(0, dp(40), 1f).apply { setMargins(dp(3), dp(2), dp(3), dp(2)) })
+  }, LinearLayout.LayoutParams(0, dp(menuButtonHeightDp()), 1f).apply { setMargins(dp(3), 0, dp(3), 0) })
   if (tracker == "BIA" || tracker == "ECG") {
    actions.addView(button("История") {
     if (tracker == "ECG") { if (ecgRecording) finishEcgRecording() else stopSamsungTrackerTest(); showEcgHistory() }
     else { stopSamsungTrackerTest(); showBiaHistory() }
-   }, LinearLayout.LayoutParams(0, dp(40), 1f).apply { setMargins(dp(3), dp(2), dp(3), dp(2)) })
+   }, LinearLayout.LayoutParams(0, dp(menuButtonHeightDp()), 1f).apply { setMargins(dp(3), 0, dp(3), 0) })
   }
   root.addView(actions)
   root.addView(button("Назад") {
@@ -860,6 +1004,46 @@ class MainActivity : Activity(), SensorEventListener {
   measurementProgress = (durationMs / 300L).toInt().coerceIn(0, 100)
   updateMeasurementUi()
  }
+ private fun sendMeasurementHistory(kind: String) {
+  var count = 0
+  val history = if (kind == "bia") normalizedBiaHistory() else
+   try { JSONArray(prefs.getString("ecg_history", "[]")) } catch (_: Exception) { JSONArray() }
+  for (i in history.length() - 1 downTo 0) {
+   val entry = history.optJSONObject(i) ?: continue
+   val timestamp = entry.optLong("timestamp", 0L)
+   if (timestamp <= 0L) continue
+   val event = JSONObject(entry.toString()).put("kind", kind).put("id", "$kind:$timestamp")
+    .put("measured_at", java.time.Instant.ofEpochMilli(timestamp).toString())
+   if (kind == "ecg") event.remove("file") // Raw ECG waveform is not transmitted.
+   mqtt?.publish(kind, event.toString())
+   bleServer?.publishJournal(event.toString())
+   count++
+  }
+  android.widget.Toast.makeText(this, "В очередь отправки: $count записей", android.widget.Toast.LENGTH_LONG).show()
+ }
+ private fun confirmDeleteMeasurement(kind: String, timestamp: Long) {
+  AlertDialog.Builder(this).setTitle("Удалить запись?")
+   .setMessage(if (kind == "ecg") "Удалить запись и локальный CSV-файл ЭКГ?" else "Удалить локальную запись BIA?")
+   .setNegativeButton("Отмена", null)
+   .setPositiveButton("Удалить") { _, _ ->
+    if (!prefs.getBoolean("history_delete_button_enabled", false)) return@setPositiveButton
+    val key = if (kind == "ecg") "ecg_history" else "bia_history"
+    val history = if (kind == "bia") normalizedBiaHistory() else
+     try { JSONArray(prefs.getString(key, "[]")) } catch (_: Exception) { JSONArray() }
+    val updated = JSONArray()
+    for (i in 0 until history.length()) {
+     val item = history.optJSONObject(i) ?: continue
+     if (item.optLong("timestamp") == timestamp) {
+      if (kind == "ecg") {
+       val file = item.optString("file")
+       if (Regex("^ecg_[0-9]+\\.csv$").matches(file)) deleteFile(file)
+      }
+     } else updated.put(item)
+    }
+    prefs.edit().putString(key, updated.toString()).apply()
+    if (kind == "ecg") showEcgHistory() else showBiaHistory()
+   }.show()
+ }
  private fun showEcgHistory() {
   screen = "ecg_history"
   val root = page().apply { setPadding(dp(10), dp(2), dp(10), dp(10)) }
@@ -868,15 +1052,21 @@ class MainActivity : Activity(), SensorEventListener {
    setPadding(dp(2), 0, dp(2), dp(2))
   })
   root.addView(button("← Назад") { showMeasurement("ECG") })
+  if (prefs.getBoolean("history_send_button_enabled", false)) {
+   root.addView(button("Отправить всю историю") { sendMeasurementHistory("ecg") })
+  }
   val history = try { JSONArray(prefs.getString("ecg_history", "[]")) } catch (_: Exception) { JSONArray() }
   if (history.length() == 0) root.addView(label("Записей пока нет", 12f))
   for (i in 0 until history.length()) {
    val item = history.optJSONObject(i) ?: continue
    val date = SimpleDateFormat("dd.MM HH:mm", Locale.getDefault()).format(Date(item.optLong("timestamp")))
    val file = item.optString("file")
-   root.addView(button("$date · ${item.optLong("durationMs") / 1000} с · ${item.optInt("samples")} отсчётов") {
+   val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+   row.addView(button("$date · ${item.optLong("durationMs") / 1000} с · ${item.optInt("samples")} отсчётов") {
     showEcgRecording(file, date)
-   })
+   }, LinearLayout.LayoutParams(0, dp(menuButtonHeightDp()), 1f))
+   if (prefs.getBoolean("history_delete_button_enabled", false)) row.addView(button("✕") { confirmDeleteMeasurement("ecg", item.optLong("timestamp")) }, LinearLayout.LayoutParams(dp(34), dp(menuButtonHeightDp())))
+   root.addView(row)
   }
   root.addView(label("Исходные отсчёты хранятся в CSV на часах.", 11f))
   showPage(root)
@@ -940,11 +1130,11 @@ class MainActivity : Activity(), SensorEventListener {
   }
   val nav = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
   nav.addView(button("◀ 3 с") { startSample = (startSample - 1500).coerceAtLeast(0); redraw() },
-   LinearLayout.LayoutParams(0, dp(40), 1f))
+   LinearLayout.LayoutParams(0, dp(menuButtonHeightDp()), 1f))
   nav.addView(button("3 с ▶") {
    startSample = (startSample + 1500).coerceAtMost(((values.size - 1) / 1500 * 1500).coerceAtLeast(0))
    redraw()
-  }, LinearLayout.LayoutParams(0, dp(40), 1f))
+  }, LinearLayout.LayoutParams(0, dp(menuButtonHeightDp()), 1f))
   root.addView(nav)
   root.addView(button("Фильтр: вкл/выкл") { filtered = !filtered; redraw() })
   val exportStatus = label("", 11f)
@@ -1034,12 +1224,16 @@ class MainActivity : Activity(), SensorEventListener {
    setPadding(dp(2), 0, dp(2), dp(2))
   })
   root.addView(button("← Назад") { showMeasurement("BIA") })
+  if (prefs.getBoolean("history_send_button_enabled", false)) {
+   root.addView(button("Отправить всю историю") { sendMeasurementHistory("bia") })
+  }
   val history = normalizedBiaHistory()
   if (history.length() == 0) root.addView(label("Завершённых измерений пока нет", 12f))
   for (i in 0 until history.length()) {
    val entry = history.optJSONObject(i) ?: continue
    val date = SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault()).format(Date(entry.optLong("timestamp")))
-   root.addView(button(date) {
+   val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+   row.addView(button(date) {
     val details = page()
     details.addView(label(date, 16f))
     val lines = listOf(
@@ -1055,7 +1249,9 @@ class MainActivity : Activity(), SensorEventListener {
     details.addView(button("Назад") { showBiaHistory() })
     screen = "bia_details"
     showPage(details)
-   })
+   }, LinearLayout.LayoutParams(0, dp(menuButtonHeightDp()), 1f))
+   if (prefs.getBoolean("history_delete_button_enabled", false)) row.addView(button("✕") { confirmDeleteMeasurement("bia", entry.optLong("timestamp")) }, LinearLayout.LayoutParams(dp(34), dp(menuButtonHeightDp())))
+   root.addView(row)
   }
   showPage(root)
  }
@@ -1181,12 +1377,32 @@ class MainActivity : Activity(), SensorEventListener {
   }
   manager = getSystemService(SENSOR_SERVICE) as SensorManager
   mqtt = WatchMqtt(this) { msg -> runOnUiThread { mqttInfo = msg; refresh() } }
-  if (prefs.getBoolean("ble_enabled", false)) startBle()
+  if (prefs.getBoolean("ble_enabled", false) && !prefs.getBoolean("background_sync_enabled", false)) startBle()
+  if (prefs.getBoolean("background_sync_enabled", false)) updateBackgroundService()
   showHome()
   requestMissingPermissions()
   refresh()
  }
 
+ private fun updateBackgroundService() {
+  val intent = Intent(this, WatchSyncService::class.java)
+  if (prefs.getBoolean("background_sync_enabled", false)) {
+   bleServer?.stop(); bleServer = null
+   intent.action = WatchSyncService.ACTION_START
+   try { androidxStartForegroundService(intent) } catch (e: Exception) {
+    android.util.Log.w("WatchBridgeSync", "Cannot start foreground service", e)
+    android.widget.Toast.makeText(this, "Не удалось запустить фоновый сервис: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
+   }
+  } else {
+   intent.action = WatchSyncService.ACTION_STOP
+   startService(intent)
+   if (prefs.getBoolean("ble_enabled", false)) startBle()
+  }
+  if (::manager.isInitialized) startSensors()
+ }
+ private fun androidxStartForegroundService(intent: Intent) {
+  if (Build.VERSION.SDK_INT >= 26) startForegroundService(intent) else startService(intent)
+ }
  private fun startBle() {
   if (Build.VERSION.SDK_INT >= 31) {
    val needed = listOf(Manifest.permission.BLUETOOTH_CONNECT, Manifest.permission.BLUETOOTH_ADVERTISE)
@@ -1197,6 +1413,11 @@ class MainActivity : Activity(), SensorEventListener {
     refresh()
     return
    }
+  }
+  if (prefs.getBoolean("background_sync_enabled", false)) {
+   bleInfo = "BLE управляется фоновым сервисом"
+   updateBackgroundService()
+   return
   }
   if (bleServer == null) bleServer = WatchBleServer(this) { msg ->
    runOnUiThread { bleInfo = msg; refresh() }
@@ -1309,7 +1530,7 @@ class MainActivity : Activity(), SensorEventListener {
 
  override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
   super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-  if (requestCode == 100) startSensors()
+  if (requestCode == 100) { startSensors(); if (prefs.getBoolean("background_sync_enabled", false)) updateBackgroundService() }
   if (requestCode == 101) {
    healthPermissionRequestPending = false
    val denied = healthPermissions.filter { checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }
@@ -1321,6 +1542,10 @@ class MainActivity : Activity(), SensorEventListener {
 
  private fun startSensors() {
   manager.unregisterListener(this)
+  if (prefs.getBoolean("background_sync_enabled", false)) {
+   sensorInfo = "Датчики обслуживает фоновый сервис"
+   return
+  }
   val details = mutableListOf<String>()
   val sensors = listOf(Sensor.TYPE_HEART_RATE, Sensor.TYPE_STEP_COUNTER)
   for (type in sensors) {
@@ -1574,10 +1799,10 @@ class MainActivity : Activity(), SensorEventListener {
     val bpm = event.values[0]
     if (bpm.isFinite() && bpm in 25f..240f) {
      heart = bpm
-     if (pulseAnimating && screen == "home") {
+     if ((pulseAnimating && screen == "home") || prefs.getBoolean("auto_heart_collection", false)) {
       prefs.edit().putString("last_heart", "${bpm.toInt()} уд/мин").apply()
       saveVital("heart", bpm.toInt())
-      renderHeartButton()
+      if (screen == "home") renderHeartButton()
      }
     }
    }
@@ -1604,6 +1829,6 @@ class MainActivity : Activity(), SensorEventListener {
  }
  override fun onResume() {
   super.onResume()
-  if (::manager.isInitialized && ::output.isInitialized) startSensors()
+  if (::manager.isInitialized) startSensors()
  }
 }

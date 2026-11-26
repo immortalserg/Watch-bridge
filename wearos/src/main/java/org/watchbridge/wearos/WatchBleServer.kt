@@ -13,14 +13,20 @@ import android.util.Log
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.util.UUID
+import org.json.JSONObject
+import org.json.JSONArray
+import java.time.Instant
 
 /** Experimental local-only GATT bridge; no measurement is generated here. */
 class WatchBleServer(private val context: Context, private val report: (String) -> Unit) {
  companion object {
   val SERVICE_UUID: UUID = UUID.fromString("f3e9b8c0-4471-4a42-a14b-6f2f7a91c001")
   val JOURNAL_UUID: UUID = UUID.fromString("f3e9b8c0-4471-4a42-a14b-6f2f7a91c003")
+  val HISTORY_UUID: UUID = UUID.fromString("f3e9b8c0-4471-4a42-a14b-6f2f7a91c005")
+  val IDENTITY_UUID: UUID = UUID.fromString("f3e9b8c0-4471-4a42-a14b-6f2f7a91c004")
   val DATA_UUID: UUID = UUID.fromString("f3e9b8c0-4471-4a42-a14b-6f2f7a91c002")
   private val CCC_UUID: UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
+  private var activeOwner: WatchBleServer? = null
  }
  private val manager = context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
  private var server: BluetoothGattServer? = null
@@ -29,19 +35,66 @@ class WatchBleServer(private val context: Context, private val report: (String) 
  @Volatile private var latestJournal: ByteArray = byteArrayOf()
  private var advertiser: android.bluetooth.le.BluetoothLeAdvertiser? = null
  private val subscribers = mutableSetOf<String>()
+ private val historyReplies = mutableMapOf<String, ByteArray>()
  private var latest: ByteArray = byteArrayOf()
+ private fun respond(device: BluetoothDevice, requestId: Int, status: Int, offset: Int, value: ByteArray?) {
+  try {
+   val sent = server?.sendResponse(device, requestId, status, offset, value) ?: false
+   Log.d("WatchBridgeBLE", "GATT response request=$requestId status=$status bytes=${value?.size ?: 0} sent=$sent")
+  } catch (e: Exception) { Log.e("WatchBridgeBLE", "GATT response failed request=$requestId", e) }
+ }
  private val callback = object : BluetoothGattServerCallback() {
-  override fun onConnectionStateChange(device: BluetoothDevice, status: Int, newState: Int) {
-   if (newState == BluetoothProfile.STATE_DISCONNECTED) synchronized(subscribers) { subscribers.remove(device.address) }
-  }
-  override fun onCharacteristicReadRequest(device: BluetoothDevice, requestId: Int, offset: Int, characteristic: BluetoothGattCharacteristic) {
-   if (characteristic.uuid != DATA_UUID && characteristic.uuid != JOURNAL_UUID) {
-    server?.sendResponse(device, requestId, BluetoothGatt.GATT_REQUEST_NOT_SUPPORTED, offset, null)
+  override fun onServiceAdded(status: Int, service: BluetoothGattService) {
+   Log.d("WatchBridgeBLE", "onServiceAdded status=$status uuid=${service.uuid}")
+   if (service.uuid != SERVICE_UUID) return
+   if (status != BluetoothGatt.GATT_SUCCESS) {
+    report("GATT service registration failed: $status")
+    stop()
     return
    }
-   val bytes = if (characteristic.uuid == JOURNAL_UUID) latestJournal else latest
-   if (offset > bytes.size) server?.sendResponse(device, requestId, BluetoothGatt.GATT_INVALID_OFFSET, offset, null)
-   else server?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, offset, bytes.copyOfRange(offset, bytes.size))
+   try {
+    val adv = advertiser ?: return
+    val settings = AdvertiseSettings.Builder().setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_LOW_LATENCY)
+     .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_MEDIUM).setConnectable(true).build()
+    val data = AdvertiseData.Builder().addServiceUuid(ParcelUuid(SERVICE_UUID))
+     .setIncludeDeviceName(false).build()
+    adv.startAdvertising(settings, data, advertiseCallback)
+    Log.d("WatchBridgeBLE", "BLE advertising requested after GATT registration")
+   } catch (e: Exception) { Log.e("WatchBridgeBLE", "Advertising start failed", e); report("BLE advertising start failed"); stop() }
+  }
+  override fun onConnectionStateChange(device: BluetoothDevice, status: Int, newState: Int) {
+   Log.d("WatchBridgeBLE", "Connection status=$status state=$newState device=${device.address}")
+   if (newState == BluetoothProfile.STATE_DISCONNECTED) {
+    synchronized(subscribers) { subscribers.remove(device.address) }
+    synchronized(historyReplies) { historyReplies.remove(device.address) }
+   }
+  }
+  override fun onCharacteristicReadRequest(device: BluetoothDevice, requestId: Int, offset: Int, characteristic: BluetoothGattCharacteristic) {
+   Log.d("WatchBridgeBLE", "GATT read request=$requestId uuid=${characteristic.uuid} offset=$offset device=${device.address}")
+   if (characteristic.uuid != DATA_UUID && characteristic.uuid != JOURNAL_UUID && characteristic.uuid != IDENTITY_UUID && characteristic.uuid != HISTORY_UUID) {
+    respond(device, requestId, BluetoothGatt.GATT_REQUEST_NOT_SUPPORTED, offset, null)
+    return
+   }
+   val bytes = when (characteristic.uuid) {
+    HISTORY_UUID -> synchronized(historyReplies) { historyReplies[device.address] ?: byteArrayOf() }
+    JOURNAL_UUID -> latestJournal
+    IDENTITY_UUID -> (context.getSharedPreferences("watch_bridge", Context.MODE_PRIVATE).getString("device_id", "") ?: "").toByteArray(Charsets.UTF_8)
+    else -> latest
+   }
+   if (offset > bytes.size) respond(device, requestId, BluetoothGatt.GATT_INVALID_OFFSET, offset, null)
+   else respond(device, requestId, BluetoothGatt.GATT_SUCCESS, offset, bytes.copyOfRange(offset, bytes.size))
+  }
+  override fun onCharacteristicWriteRequest(device: BluetoothDevice, requestId: Int, characteristic: BluetoothGattCharacteristic, preparedWrite: Boolean, responseNeeded: Boolean, offset: Int, value: ByteArray) {
+   val command = if (value.size <= 32) value.toString(Charsets.UTF_8) else ""
+   val match = Regex("^(heart|oxygen|steps|bia|ecg):([0-9]{1,3})$").matchEntire(command)
+   val valid = characteristic.uuid == HISTORY_UUID && !preparedWrite && offset == 0 && match != null
+   if (valid) {
+    val kind = match!!.groupValues[1]
+    val index = match.groupValues[2].toInt()
+    val reply = historyRecord(kind, index).toByteArray(Charsets.UTF_8)
+    synchronized(historyReplies) { historyReplies[device.address] = reply }
+   }
+   if (responseNeeded) server?.sendResponse(device, requestId, if (valid) BluetoothGatt.GATT_SUCCESS else BluetoothGatt.GATT_REQUEST_NOT_SUPPORTED, offset, null)
   }
   override fun onDescriptorReadRequest(device: BluetoothDevice, requestId: Int, offset: Int, descriptor: BluetoothGattDescriptor) {
    val enabled = synchronized(subscribers) { device.address in subscribers }
@@ -64,19 +117,27 @@ class WatchBleServer(private val context: Context, private val report: (String) 
   override fun onStartFailure(errorCode: Int) { report("BLE advertising failed: $errorCode") }
  }
  fun start() {
-  if (server != null) return
+  synchronized(WatchBleServer::class.java) {
+   if (server != null) return
+   if (activeOwner != null && activeOwner !== this) {
+    Log.w("WatchBridgeBLE", "Duplicate GATT server start blocked")
+    report("BLE server already running")
+    return
+   }
+   activeOwner = this
+  }
   if (Build.VERSION.SDK_INT >= 31 &&
    (context.checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED ||
     context.checkSelfPermission(Manifest.permission.BLUETOOTH_ADVERTISE) != PackageManager.PERMISSION_GRANTED)) {
-   report("BLE permissions missing"); return
+   report("BLE permissions missing"); releaseOwner(); return
   }
   try {
-   val adapter = manager.adapter ?: run { report("Bluetooth adapter unavailable"); return }
+   val adapter = manager.adapter ?: run { report("Bluetooth adapter unavailable"); releaseOwner(); return }
    if (!adapter.isEnabled || !adapter.isMultipleAdvertisementSupported) {
-    report("Bluetooth disabled or BLE advertising unsupported"); return
+    report("Bluetooth disabled or BLE advertising unsupported"); releaseOwner(); return
    }
-   val adv = adapter.bluetoothLeAdvertiser ?: run { report("BLE advertiser unavailable"); return }
-   val gatt = manager.openGattServer(context, callback) ?: run { report("GATT server unavailable"); return }
+   val adv = adapter.bluetoothLeAdvertiser ?: run { report("BLE advertiser unavailable"); releaseOwner(); return }
+   val gatt = manager.openGattServer(context, callback) ?: run { report("GATT server unavailable"); releaseOwner(); return }
    val characteristic = BluetoothGattCharacteristic(DATA_UUID,
     BluetoothGattCharacteristic.PROPERTY_READ or BluetoothGattCharacteristic.PROPERTY_NOTIFY,
     BluetoothGattCharacteristic.PERMISSION_READ)
@@ -90,17 +151,18 @@ class WatchBleServer(private val context: Context, private val report: (String) 
    journal.addDescriptor(BluetoothGattDescriptor(CCC_UUID,
     BluetoothGattDescriptor.PERMISSION_READ or BluetoothGattDescriptor.PERMISSION_WRITE))
    service.addCharacteristic(journal)
+   service.addCharacteristic(BluetoothGattCharacteristic(HISTORY_UUID,
+    BluetoothGattCharacteristic.PROPERTY_READ or BluetoothGattCharacteristic.PROPERTY_WRITE,
+    BluetoothGattCharacteristic.PERMISSION_READ or BluetoothGattCharacteristic.PERMISSION_WRITE))
+   service.addCharacteristic(BluetoothGattCharacteristic(IDENTITY_UUID,
+    BluetoothGattCharacteristic.PROPERTY_READ, BluetoothGattCharacteristic.PERMISSION_READ))
    journalCharacteristic = journal
    server = gatt
    dataCharacteristic = characteristic
-   if (!gatt.addService(service)) { report("GATT addService failed"); stop(); return }
    advertiser = adv
-   val settings = AdvertiseSettings.Builder().setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_LOW_LATENCY)
-    .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_MEDIUM).setConnectable(true).build()
-   val data = AdvertiseData.Builder().addServiceUuid(ParcelUuid(SERVICE_UUID))
-    .setIncludeDeviceName(false).build()
-   adv.startAdvertising(settings, data, advertiseCallback)
-   report("GATT service created")
+   if (!gatt.addService(service)) { report("GATT addService failed"); stop(); return }
+   Log.d("WatchBridgeBLE", "GATT addService accepted; waiting for onServiceAdded")
+   report("GATT service registering")
   } catch (e: Exception) {
    Log.e("WatchBridgeBLE", "BLE start failed", e)
    report("BLE start failed: ${e.javaClass.simpleName}: ${e.message}")
@@ -149,13 +211,61 @@ class WatchBleServer(private val context: Context, private val report: (String) 
    } catch (e: Exception) { Log.w("WatchBridgeBLE", "Journal notify failed", e) }
   }
  }
+ private fun historyRecord(kind: String, index: Int): String {
+  val prefs = context.getSharedPreferences("watch_bridge", Context.MODE_PRIVATE)
+  if (index > 90) return JSONObject().put("done", true).toString()
+  val result = try {
+   if (kind == "steps") {
+    val days = JSONObject(prefs.getString("step_daily_history", "{}") ?: "{}")
+    val dates = days.keys().asSequence().toList().sortedDescending()
+    if (index >= dates.size) null else {
+     val day = dates[index]
+     val entry = days.optJSONObject(day) ?: JSONObject()
+     JSONObject().put("kind", "steps").put("id", "steps:$day")
+      .put("date", day).put("measured_at", Instant.ofEpochMilli(entry.optLong("lastUpdate", System.currentTimeMillis())).toString())
+      .put("steps", entry.optLong("steps")).put("kcal", 0).put("diatance", 0)
+    }
+   } else {
+    val key = when (kind) {
+     "heart", "oxygen" -> "vital_history_$kind"
+     "bia" -> "bia_history"
+     else -> "ecg_history"
+    }
+    val items = JSONArray(prefs.getString(key, "[]") ?: "[]")
+    val entry = items.optJSONObject(index)
+    if (entry == null) null else {
+     val timestamp = entry.optLong(if (kind == "heart" || kind == "oxygen") "time" else "timestamp")
+     if (timestamp <= 0L) null else {
+      val event = JSONObject(entry.toString()).put("kind", kind)
+       .put("id", "$kind:$timestamp").put("measured_at", Instant.ofEpochMilli(timestamp).toString())
+      if (kind == "heart") event.put("bpm", entry.optInt("value"))
+      if (kind == "oxygen") event.put("spo2", entry.optInt("value"))
+      event.remove("file")
+      event.remove("time")
+      event.remove("value")
+      event
+     }
+    }
+   }
+  } catch (e: Exception) {
+   Log.w("WatchBridgeBLE", "History read failed", e)
+   null
+  }
+  return result?.toString() ?: JSONObject().put("done", true).toString()
+ }
+ private fun releaseOwner() {
+  synchronized(WatchBleServer::class.java) { if (activeOwner === this) activeOwner = null }
+ }
  fun stop() {
   try { advertiser?.stopAdvertising(advertiseCallback) } catch (_: Exception) {}
   advertiser = null
+  try { server?.clearServices() } catch (_: Exception) {}
   try { server?.close() } catch (_: Exception) {}
   server = null
   dataCharacteristic = null
   journalCharacteristic = null
   synchronized(subscribers) { subscribers.clear() }
+  synchronized(historyReplies) { historyReplies.clear() }
+  releaseOwner()
  }
 }

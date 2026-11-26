@@ -10,6 +10,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from .const import DOMAIN, CONF_DEVICE_ID
 from .ble_diagnostics import GattDiagnostics
+from .wearos_ble import WearOsBleReceiver, SERVICE_UUID as WEAROS_SERVICE_UUID
 from .storage import Journal
 from .websocket import async_register as register_websocket
 
@@ -112,6 +113,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         BluetoothScanningMode.ACTIVE,
     )
     entry.async_on_unload(unsub_ble)
+
+    # Wear OS uses a different GATT protocol from Rogbid Z10.
+    # Verify its stable device ID before writing anything to this entry's journal.
+    if device_id.startswith("wearos_"):
+        wearos_receiver = WearOsBleReceiver(hass, device_id, journal, on_ble_record)
+        entry.async_on_unload(wearos_receiver.close)
+        unsub_wearos = bluetooth.async_register_callback(
+            hass,
+            lambda service_info, change: wearos_receiver.on_advertisement(service_info),
+            {"service_uuid": WEAROS_SERVICE_UUID},
+            BluetoothScanningMode.ACTIVE,
+        )
+        entry.async_on_unload(unsub_wearos)
 
 
     async def on_state(msg):

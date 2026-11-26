@@ -6,10 +6,21 @@ import org.eclipse.paho.client.mqttv3.MqttClient
 import org.eclipse.paho.client.mqttv3.MqttConnectOptions
 import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import org.json.JSONArray
+import org.json.JSONObject
 
 /** MQTT transport for local measurements. Does not run as a background service. */
 class WatchMqtt(private val context: Context, private val report: (String) -> Unit) {
- private val queue = Executors.newSingleThreadExecutor()
+ companion object { private val storageLock = Any(); private val drainLock = Any() }
+ private val queue = Executors.newSingleThreadScheduledExecutor()
+ private val pendingKey = "mqtt_pending_history"
+ private val maxPending = 500
+ @Volatile private var lastDeliveredAt = 0L
+ init { queue.scheduleWithFixedDelay({ try { drain() } catch (e: Exception) { Log.w("WatchBridgeMQTT", "Retry failed", e) } }, 15, 30, TimeUnit.SECONDS) }
+ fun retryPending() { queue.execute { drain() } }
+ fun pendingCount(): Int = synchronized(storageLock) { try { JSONArray(prefs.getString(pendingKey, "[]")).length() } catch (_: Exception) { 0 } }
+ fun lastDelivered(): Long = lastDeliveredAt
  private var client: MqttClient? = null
  private var currentUri = ""
  private var currentCredentials = ""
@@ -19,48 +30,90 @@ class WatchMqtt(private val context: Context, private val report: (String) -> Un
  fun testConnection() { publish("diagnostic", "{\"kind\":\"diagnostic\",\"id\":\"mqtt-test\",\"measured_at\":\"1970-01-01T00:00:00Z\"}") }
 
  fun publish(kind: String, payload: String) {
-  if (!prefs.getBoolean("mqtt_enabled", false)) return
-  val host = prefs.getString("mqtt_host", "")?.trim().orEmpty()
-  val port = prefs.getString("mqtt_port", "8883")?.toIntOrNull() ?: return
-  val tls = prefs.getBoolean("mqtt_tls", true)
-  if (host.isEmpty() || port !in 1..65535) { report("MQTT: неверный адрес или порт"); return }
-  queue.execute {
-   var stage = "создание подключения"
-   try {
-    val uri = (if (tls) "ssl://" else "tcp://") + host + ":" + port
-    val username = prefs.getString("mqtt_user", "").orEmpty().trim()
-    val password = prefs.getString("mqtt_password", "").orEmpty()
-    val fingerprint = "$username:${password.hashCode()}:$tls"
-    Log.i("WatchBridgeMQTT", "Connecting host=$host port=$port tls=$tls userLength=${username.length} user=$username passwordLength=${password.length}")
-    if (uri != currentUri || fingerprint != currentCredentials || client?.isConnected != true) {
-     try { client?.disconnect() } catch (_: Exception) {}
-     try { client?.close() } catch (_: Exception) {}
-     val next = MqttClient(uri, "watchbridge_" + deviceId.takeLast(18), MemoryPersistence())
-     val opts = MqttConnectOptions().apply {
-      isCleanSession = true
-      connectionTimeout = 10
-      keepAliveInterval = 30
-      userName = username.takeIf { it.isNotEmpty() }
-      if (password.isNotEmpty()) this.password = password.toCharArray()
+  if (kind == "diagnostic") {
+   queue.execute { send(kind, payload) }
+   return
+  }
+  synchronized(storageLock) {
+   val items = try { JSONArray(prefs.getString(pendingKey, "[]")) } catch (_: Exception) { JSONArray() }
+   val id = try { JSONObject(payload).optString("id") } catch (_: Exception) { "" }
+   if (id.isNotBlank()) for (i in 0 until items.length()) {
+    val old = items.optJSONObject(i) ?: continue
+    if (old.optString("id") == id && old.optString("kind") == kind) {
+     if (kind == "steps") {
+      old.put("payload", payload)
+      old.put("send_to_ha", prefs.getBoolean("ha_mqtt_enabled", true))
+      prefs.edit().putString(pendingKey, items.toString()).commit()
      }
-     stage = "соединение с брокером"
-     next.connect(opts)
-     client = next
-     currentUri = uri
-     currentCredentials = fingerprint
-     report("MQTT: подключено")
+     return
     }
-    val base = "rogbid/$deviceId"
-    stage = "публикация $kind"
-    client?.publish("$base/history/$kind", payload.toByteArray(Charsets.UTF_8), 1, false)
-    report(if (kind == "diagnostic") "MQTT: тест успешен" else "MQTT: отправлено $kind")
-   } catch (e: Exception) {
-    Log.w("WatchBridgeMQTT", "Publish failed", e)
-    val cause = generateSequence(e as Throwable?) { it.cause }.last()
-    val details = (cause.message ?: e.message ?: "нет описания").take(180)
-    report("MQTT [$stage]: ${e.javaClass.simpleName}: $details")
-    Log.e("WatchBridgeMQTT", "Stage=$stage, host=$host, port=$port, tls=$tls", e)
    }
+   val record = JSONObject().put("kind", kind).put("payload", payload).put("id", id)
+    .put("send_to_ha", prefs.getBoolean("ha_mqtt_enabled", true))
+   val updated = JSONArray()
+   val start = (items.length() - maxPending + 1).coerceAtLeast(0)
+   for (i in start until items.length()) updated.put(items.get(i))
+   updated.put(record)
+   prefs.edit().putString(pendingKey, updated.toString()).commit()
+  }
+  queue.execute { drain() }
+ }
+ private fun drain() = synchronized(drainLock) {
+  if (!prefs.getBoolean("mqtt_enabled", false)) return@synchronized
+  while (true) {
+   val next = synchronized(storageLock) {
+    try { JSONArray(prefs.getString(pendingKey, "[]")).optJSONObject(0) } catch (_: Exception) { null }
+   } ?: return@synchronized
+   if (!send(next.optString("kind"), next.optString("payload"), next.optBoolean("send_to_ha", true))) return@synchronized
+   synchronized(storageLock) {
+    val items = try { JSONArray(prefs.getString(pendingKey, "[]")) } catch (_: Exception) { JSONArray() }
+    val updated = JSONArray()
+    for (i in 1 until items.length()) updated.put(items.get(i))
+    prefs.edit().putString(pendingKey, updated.toString()).commit()
+    lastDeliveredAt = System.currentTimeMillis()
+   }
+  }
+ }
+ private fun send(kind: String, payload: String, sendToHa: Boolean = false): Boolean {
+  if (!prefs.getBoolean("mqtt_enabled", false)) return false
+  val host = prefs.getString("mqtt_host", "")?.trim().orEmpty()
+  val port = prefs.getString("mqtt_port", "8883")?.toIntOrNull() ?: return false
+  val tls = prefs.getBoolean("mqtt_tls", true)
+  if (host.isEmpty() || port !in 1..65535) { report("MQTT: неверный адрес или порт"); return false }
+  var stage = "создание подключения"
+  return try {
+   val uri = (if (tls) "ssl://" else "tcp://") + host + ":" + port
+   val username = prefs.getString("mqtt_user", "").orEmpty().trim()
+   val password = prefs.getString("mqtt_password", "").orEmpty()
+   val fingerprint = "$username:${password.hashCode()}:$tls"
+   if (uri != currentUri || fingerprint != currentCredentials || client?.isConnected != true) {
+    try { client?.disconnect() } catch (_: Exception) {}
+    try { client?.close() } catch (_: Exception) {}
+    val next = MqttClient(uri, "watchbridge_" + deviceId.takeLast(18), MemoryPersistence())
+    val opts = MqttConnectOptions().apply {
+     isCleanSession = true
+     connectionTimeout = 10
+     keepAliveInterval = 30
+     userName = username.takeIf { it.isNotEmpty() }
+     if (password.isNotEmpty()) this.password = password.toCharArray()
+    }
+    stage = "соединение с брокером"
+    next.connect(opts)
+    client = next
+    currentUri = uri
+    currentCredentials = fingerprint
+    report("MQTT: подключено")
+   }
+   stage = "публикация $kind"
+   val connected = client ?: throw IllegalStateException("MQTT disconnected")
+   connected.publish("watchbridge/$deviceId/history/$kind", payload.toByteArray(Charsets.UTF_8), 1, false)
+   if (sendToHa) connected.publish("rogbid/$deviceId/history/$kind", payload.toByteArray(Charsets.UTF_8), 1, false)
+   report(if (kind == "diagnostic") "MQTT: тест успешен" else "MQTT: отправлено $kind")
+   true
+  } catch (e: Exception) {
+   Log.w("WatchBridgeMQTT", "MQTT [$stage] failed", e)
+   report("MQTT [$stage]: ${e.javaClass.simpleName}: ${e.message?.take(120)}")
+   false
   }
  }
  fun close() {

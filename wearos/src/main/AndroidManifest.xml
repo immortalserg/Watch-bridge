@@ -2,6 +2,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
  <uses-feature android:name="android.hardware.type.watch" android:required="true"/>
  <uses-permission android:name="android.permission.INTERNET"/>
+ <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+ <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+ <uses-permission android:name="android.permission.FOREGROUND_SERVICE_HEALTH"/>
  <uses-permission android:name="android.permission.BLUETOOTH_CONNECT"/>
  <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE"/>
  <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION"/>
@@ -13,6 +16,10 @@
  <uses-permission android:name="com.samsung.android.wear.shealth.healthdataprovider.permission.READ"/>
  <queries><provider android:authorities="com.samsung.android.wear.shealth.healthdataprovider"/></queries>
  <application android:label="Watch Bridge" android:theme="@android:style/Theme.Material.NoActionBar" android:usesCleartextTraffic="true">
+  <receiver android:name=".WatchBootReceiver" android:enabled="true" android:exported="false">
+   <intent-filter><action android:name="android.intent.action.BOOT_COMPLETED"/></intent-filter>
+  </receiver>
+  <service android:name=".WatchSyncService" android:exported="false" android:foregroundServiceType="health"/>
   <activity android:name=".MainActivity" android:exported="true">
    <intent-filter>
     <action android:name="android.intent.action.MAIN"/>
